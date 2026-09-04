@@ -3,8 +3,8 @@
     "Author": "okaminico (based on ffxiv-tc-port's fork of AutoDuty)",
     "Name": "AutoDuty",
     "InternalName": "AutoDuty",
-    "AssemblyVersion": "7.15.1.3",
-    "Description": "自動幫你跑副本，支援信賴的同伴、達人指引、士官兵團、多變或一般模式。需搭配 BossModReborn、vnavmesh 與一款戰鬥循環插件（WrathCombo 或 BossMod AutoRotation）使用。\n\n本版本修正了《巴哈姆特禁欲者(邂逅篇)》Turn 3 走路會卡住的問題，並針對「打完副本不會自動離開」新增診斷記錄，正在排查中。",
+    "AssemblyVersion": "7.15.1.4",
+    "Description": "自動幫你跑副本，支援信賴的同伴、達人指引、士官兵團、多變或一般模式。需搭配 BossModReborn、vnavmesh 與一款戰鬥循環插件（WrathCombo 或 BossMod AutoRotation）使用。\n\n本版本修正了《巴哈姆特禁欲者(邂逅篇)》Turn 3 走路會卡住的問題，並修正了「打完副本不會自動離開」——結算選單重複呼叫 Show() 疑似打斷了它自己的載入流程，改成只在視窗真的不可見時才呼叫。",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/okaminico/AutoDuty-1",
     "DalamudApiLevel": 13,
@@ -15,8 +15,8 @@
     "IconUrl": "https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/icons/AutoDuty.png",
     "Punchline": "自動跑本，解放雙手（台服修正版，修正巴哈姆特邂逅之章3卡住）。",
     "AcceptsFeedback": true,
-    "DownloadLinkInstall": "https://github.com/okaminico/AutoDuty-1/releases/download/AutoDuty-v7.15.1.3-twfix2/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/okaminico/AutoDuty-1/releases/download/AutoDuty-v7.15.1.3-twfix2/latest.zip",
-    "Changelog": "「打完副本不會自動離開」問題新增診斷記錄（尚未修正，需要 Debug 等級記錄檔才能確定卡在哪一步）。"
+    "DownloadLinkInstall": "https://github.com/okaminico/AutoDuty-1/releases/download/AutoDuty-v7.15.1.4-twfix3/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/okaminico/AutoDuty-1/releases/download/AutoDuty-v7.15.1.4-twfix3/latest.zip",
+    "Changelog": "修正「打完副本不會自動離開」：結算選單不再每幀重複呼叫 Show()，避免可能打斷它自己的載入流程。若仍卡住麻煩回報，診斷記錄已加強。"
   }
 ]
