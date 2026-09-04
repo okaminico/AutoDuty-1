@@ -1,0 +1,22 @@
+[
+  {
+    "Author": "okaminico (based on ffxiv-tc-port's fork of AutoDuty)",
+    "Name": "AutoDuty",
+    "InternalName": "AutoDuty",
+    "AssemblyVersion": "7.15.1.2",
+    "Description": "自動幫你跑副本，支援信賴的同伴、達人指引、士官兵團、多變或一般模式。需搭配 BossModReborn、vnavmesh 與一款戰鬥循環插件（WrathCombo 或 BossMod AutoRotation）使用。\n\n本版本修正了《巴哈姆特禁欲者(邂逅篇)》Turn 3 走路會卡住的問題。",
+    "ApplicableVersion": "any",
+    "RepoUrl": "https://github.com/okaminico/AutoDuty-1",
+    "DalamudApiLevel": 13,
+    "LoadRequiredState": 0,
+    "LoadSync": false,
+    "CanUnloadAsync": false,
+    "LoadPriority": 0,
+    "IconUrl": "https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/icons/AutoDuty.png",
+    "Punchline": "自動跑本，解放雙手（台服修正版，修正巴哈姆特邂逅之章3卡住）。",
+    "AcceptsFeedback": true,
+    "DownloadLinkInstall": "https://github.com/okaminico/AutoDuty-1/releases/download/AutoDuty-v7.15.1.2-twfix1/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/okaminico/AutoDuty-1/releases/download/AutoDuty-v7.15.1.2-twfix1/latest.zip",
+    "Changelog": "修正《巴哈姆特禁欲者(邂逅篇)》Turn 3 走路會卡住的問題，套用官方上游目前的修正路徑。"
+  }
+]
