@@ -160,19 +160,34 @@ namespace AutoDuty.Helpers
             }
 
             // ② 窗還沒開才 Show()。
-            if (!GenericHelpers.TryGetAddonByName("ContentsFinderMenu", out AtkUnitBase* addonContentsFinderMenu)
-                || !GenericHelpers.IsAddonReady(addonContentsFinderMenu))
+            bool addonFound = GenericHelpers.TryGetAddonByName("ContentsFinderMenu", out AtkUnitBase* addonContentsFinderMenu);
+            if (!addonFound || !GenericHelpers.IsAddonReady(addonContentsFinderMenu))
             {
+                // 🔴 視窗其實已經找得到、也可見,只是 IsAddonReady 另外兩個條件(LoadedState/IsFullyLoaded)
+                // 還沒過 ⇒ 視窗正在自己的載入/穩定流程中,這時候不要再呼叫 Show()。
+                // 懷疑：對一扇已經可見的窗每一幀重複呼叫 Show() 會打斷它的載入流程，
+                // 造成「視窗一直開著、卻永遠沒 ready」的無限迴圈 —— 這正是這次回報卡住的樣子。
+                // 只有「真的還沒開出來」(找不到，或找到了但 IsVisible=false，多半是上一發「退出」
+                // 已經把它收掉)才需要再喊一次 Show()。
+                bool addonVisible = addonFound && addonContentsFinderMenu->IsVisible;
+
                 if (EzThrottler.Throttle("ExitDutyHelper-Diag-NotReady", 5000))
                 {
-                    bool found = GenericHelpers.TryGetAddonByName("ContentsFinderMenu", out AtkUnitBase* diagAddon);
-                    Svc.Log.Debug($"[ExitDutyHelper][診斷] ContentsFinderMenu 還沒就緒,已呼叫 Show() 等待中。" +
-                        $" 視窗找到={found}, IsVisible={(found ? diagAddon->IsVisible.ToString() : "n/a")}");
+                    string extra = addonFound
+                        ? $", LoadedState={addonContentsFinderMenu->UldManager.LoadedState}, IsFullyLoaded={addonContentsFinderMenu->IsFullyLoaded()}"
+                        : "";
+                    Svc.Log.Debug($"[ExitDutyHelper][診斷] ContentsFinderMenu 還沒就緒。" +
+                        $" 視窗找到={addonFound}, IsVisible={(addonFound ? addonVisible.ToString() : "n/a")}{extra}" +
+                        (addonVisible ? "（可見但未就緒，這次不重複呼叫 Show()，等它自己穩定）" : "（不可見，呼叫 Show()）"));
                 }
 
-                // 選單已經不在了(多半就是上一發「退出」把它收掉了)⇒ 沒有東西要補關。
-                _exitPressedMenu = 0;
-                agentContentsFinderMenu->Show();
+                if (!addonVisible)
+                {
+                    // 選單已經不在了(多半就是上一發「退出」把它收掉了)⇒ 沒有東西要補關。
+                    _exitPressedMenu = 0;
+                    agentContentsFinderMenu->Show();
+                }
+
                 return;
             }
 
