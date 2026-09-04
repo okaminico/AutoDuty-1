@@ -145,16 +145,31 @@ namespace AutoDuty.Helpers
             // 兩層都判空後同幀即用;為 null 時本 tick 不動作,下 tick 重試(每幀熱路徑,不寫 log)。
             AgentModule* agentModule = AgentModule.Instance();
             if (agentModule == null)
+            {
+                if (EzThrottler.Throttle("ExitDutyHelper-Diag-NoAgentModule", 5000))
+                    Svc.Log.Debug("[ExitDutyHelper][診斷] AgentModule.Instance() 目前是 null,還在等。");
                 return;
+            }
 
             AgentInterface* agentContentsFinderMenu = agentModule->GetAgentByInternalId(AgentId.ContentsFinderMenu);
             if (agentContentsFinderMenu == null)
+            {
+                if (EzThrottler.Throttle("ExitDutyHelper-Diag-NoAgent", 5000))
+                    Svc.Log.Debug("[ExitDutyHelper][診斷] ContentsFinderMenu 的 agent 還沒建立(GetAgentByInternalId 回 null),還在等。");
                 return;
+            }
 
             // ② 窗還沒開才 Show()。
             if (!GenericHelpers.TryGetAddonByName("ContentsFinderMenu", out AtkUnitBase* addonContentsFinderMenu)
                 || !GenericHelpers.IsAddonReady(addonContentsFinderMenu))
             {
+                if (EzThrottler.Throttle("ExitDutyHelper-Diag-NotReady", 5000))
+                {
+                    bool found = GenericHelpers.TryGetAddonByName("ContentsFinderMenu", out AtkUnitBase* diagAddon);
+                    Svc.Log.Debug($"[ExitDutyHelper][診斷] ContentsFinderMenu 還沒就緒,已呼叫 Show() 等待中。" +
+                        $" 視窗找到={found}, IsVisible={(found ? diagAddon->IsVisible.ToString() : "n/a")}");
+                }
+
                 // 選單已經不在了(多半就是上一發「退出」把它收掉了)⇒ 沒有東西要補關。
                 _exitPressedMenu = 0;
                 agentContentsFinderMenu->Show();
@@ -201,7 +216,13 @@ namespace AutoDuty.Helpers
 
             // ④ 選「退出」。守衛擋下(回 false)＝這扇選單的這一發已經按過 ⇒ 這一幀什麼都不再送。
             if (!AddonHelper.TryFireCallBack(addonContentsFinderMenu, true, 0))
+            {
+                if (EzThrottler.Throttle("ExitDutyHelper-Diag-GuardBlocked", 5000))
+                    Svc.Log.Debug("[ExitDutyHelper][診斷] ContentsFinderMenu 已就緒，但 TryFireCallBack 被 AddonPressGuard 擋下，還在重試。");
                 return;
+            }
+
+            Svc.Log.Debug($"[ExitDutyHelper][診斷] 已對 ContentsFinderMenu 送出「退出」callback。");
 
             // 記下「按了哪一扇、在第幾幀」—— 關窗那一發交給 ③ 隔幾幀之後再決定要不要補。
             _exitPressedMenu  = menu;
