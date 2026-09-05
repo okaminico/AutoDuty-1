@@ -154,9 +154,23 @@ namespace AutoDuty.Helpers
 
             if (flagMapMarker != null && Svc.ClientState.TerritoryType == flagMapMarker.Value.TerritoryId && flagMapMarkerVector3 != null && flagMapMarkerVector3.Value.Y == 0)
             {
-                flagMapMarkerVector3 = VNavmesh_IPCSubscriber.Query_Mesh_PointOnFloor(new(flagMapMarker.Value.XFloat, 1024, flagMapMarker.Value.YFloat), false, 5);
+                // 🔴 提供端(vnavmesh Query.Mesh.PointOnFloor)回的是 Vector3?：查不到落點時是 null。
+                //    以前這裡宣告成 Vector3,失敗形式是 NullReferenceException(不是零向量) ——
+                //    Dalamud 的 CallGateChannel.InvokeFunc 對 null 走 `return (TRet)result;` 拆箱值型別,
+                //    而 SafeWrapper.IPCException 只攔 IpcNotReadyError,攔不到。整個 Framework.Update
+                //    處理器會在這一行中止,後面的 ForceStop/Invoke 都不會跑。
+                // 🔴 不要寫 ?? Vector3.Zero —— 那會把「查不到落點」變成「落點在地圖原點」然後真的走過去。
+                //    改動前 null 的結果是「這一輪什麼都沒做並擲例外」,所以維持原結果=這一輪不動,
+                //    下個 tick 再試(flagMapMarkerVector3 的 Y 仍是 0,上面的守衛條件會再進來)。
+                Vector3? floorPoint = VNavmesh_IPCSubscriber.Query_Mesh_PointOnFloor(new(flagMapMarker.Value.XFloat, 1024, flagMapMarker.Value.YFloat), false, 5);
+                if (floorPoint == null)
+                {
+                    Svc.Log.Debug("[MapHelper] vnavmesh 找不到旗標座標的落點,這一輪不動,下個 tick 再試。");
+                    return;
+                }
+                flagMapMarkerVector3 = floorPoint;
                 GotoHelper.ForceStop();
-                GotoHelper.Invoke(flagMapMarker.Value.TerritoryId, [flagMapMarkerVector3.Value], 0.25f, 0.25f, false, MovementHelper.IsFlyingSupported);
+                GotoHelper.Invoke(flagMapMarker.Value.TerritoryId, [floorPoint.Value], 0.25f, 0.25f, false, MovementHelper.IsFlyingSupported);
                 return;
             }
 

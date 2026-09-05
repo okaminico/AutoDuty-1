@@ -9,6 +9,11 @@ using Dalamud.Game.ClientState.Objects.Types;
 using ECommons.DalamudServices;
 using ECommons.GameFunctions;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.Event;
+using FFXIVClientStructs.FFXIV.Client.Game.InstanceContent;
+using FFXIVClientStructs.FFXIV.Client.LayoutEngine;
+using FFXIVClientStructs.Interop;
+using FFXIVClientStructs.STD;
 
 namespace AutoDuty.Data
 {
@@ -39,6 +44,8 @@ namespace AutoDuty.Data
     [JsonDerivedType(typeof(PathActionConditionActionStatus),  "AutoDuty.Data.PathActionConditionActionStatus, AutoDuty")]
     [JsonDerivedType(typeof(PathActionConditionVariantPath),   "AutoDuty.Data.PathActionConditionVariantPath, AutoDuty")]
     [JsonDerivedType(typeof(PathActionConditionConditionFlag), "AutoDuty.Data.PathActionConditionConditionFlag, AutoDuty")]
+    [JsonDerivedType(typeof(PathActionConditionCollision),     "AutoDuty.Data.PathActionConditionCollision, AutoDuty")]
+    [JsonDerivedType(typeof(PathActionConditionToDo),          "AutoDuty.Data.PathActionConditionToDo, AutoDuty")]
     [JsonDerivedType(typeof(PathActionConditionNot),           "AutoDuty.Data.PathActionConditionNot, AutoDuty")]
     [JsonDerivedType(typeof(PathActionConditionOr),            "AutoDuty.Data.PathActionConditionOr, AutoDuty")]
     [JsonDerivedType(typeof(PathActionConditionAnd),           "AutoDuty.Data.PathActionConditionAnd, AutoDuty")]
@@ -246,6 +253,99 @@ namespace AutoDuty.Data
         public override bool IsFulfilled() => this.pathIndices.Contains(Plugin.VariantPath);
 
         public override string Describe() => $"多變迷宮分歧={string.Join(",", this.pathIndices)}";
+    }
+
+    /// <summary>
+    ///     場景碰撞體(layout instance)目前是否啟用。用於「船靠岸了沒」「門開了沒」這種
+    ///     靠場景開關、而不是靠戰鬥狀態判斷的等待。
+    ///     <para>
+    ///     🔴 <c>LayoutWorld.Instance()</c> 是 <c>[StaticAddress(..., isPointer: true)]</c> 的靜態槽,
+    ///     切場景／讀取中會**合法地回傳 null**(vnavmesh 的 DebugLayout.cs 逐字記著這件事)。
+    ///     上游實作直接對 <c>LayoutWorld.Instance()-&gt;ActiveLayout</c> 解參、沒有判空 —— 這裡補上。
+    ///     AccessViolationException 在 .NET Core 是 corrupted-state exception,
+    ///     呼叫端 AutoDuty.cs 的 try/catch **攔不到**,崩掉的是整個遊戲。
+    ///     </para>
+    ///     <para>🔴 指標全部在這一格內取用完畢,不跨幀保存。</para>
+    /// </summary>
+    public class PathActionConditionCollision : PathActionCondition
+    {
+        public override ConditionType ParseKey => ConditionType.Collision;
+
+        [JsonConverter(typeof(JsonStringEnumConverter<InstanceType>))]
+        public InstanceType type = InstanceType.CollisionBox;
+
+        public ulong id;
+
+        private static unsafe V* FindPtr<K, V>(ref StdMap<K, Pointer<V>> map, K key)
+            where K : unmanaged, IComparable where V : unmanaged =>
+            map.TryGetValuePointer(key, out Pointer<V>* ptr) && ptr != null ? ptr->Value : null;
+
+        public override unsafe bool IsFulfilled()
+        {
+            LayoutWorld* world = LayoutWorld.Instance();
+            if (world == null)
+                return false;
+
+            LayoutManager* layout = world->ActiveLayout;
+            if (layout == null)
+                return false;
+
+            StdMap<ulong, Pointer<ILayoutInstance>>* instances = FindPtr(ref layout->InstancesByType, this.type);
+            if (instances == null)
+                return false;
+
+            ILayoutInstance* instance = FindPtr(ref *instances, this.id);
+            return instance != null && instance->IsColliderActive();
+        }
+
+        public override string Describe() => $"碰撞體{this.type}:{this.id:X}啟用中";
+    }
+
+    /// <summary>
+    ///     副本目標清單(畫面右上角那幾行)第 <see cref="index"/> 項的目前進度數字,
+    ///     與 <see cref="count"/> 依 <see cref="operatorValue"/> 比較。
+    ///     用於「這一波打完再往前走」這種靠目標計數、而不是靠固定秒數等待的步驟。
+    ///     <para>
+    ///     🔴 <c>EventFramework.Instance()</c> 同樣是 <c>isPointer: true</c> 的靜態槽,不在副本裡
+    ///     或切場景時會回傳 null;上游沒有判空,這裡補上(理由同 <see cref="PathActionConditionCollision"/>)。
+    ///     </para>
+    ///     <para>
+    ///     ⚠️ <c>DirectorTodo.CurrentCount</c> 與 <c>StartTimestamp</c>／<c>IconId</c>／
+    ///     <c>CurrentPercentage</c> 共用同一個 0x78 位移(union),真正語意由 <c>Type</c> 決定。
+    ///     這裡刻意沿用上游的無條件讀法,讓上游作者調好的路徑資料語意一致;
+    ///     代價是拿非計數型的目標來比較會得到無意義的數字 —— 不會崩,只會讓該條件恆真或恆假。
+    ///     </para>
+    /// </summary>
+    public class PathActionConditionToDo : PathActionCondition
+    {
+        public override ConditionType ParseKey => ConditionType.ToDo;
+
+        public byte   index = 0;
+        public int    count = 0;
+        public string operatorValue = "<";
+
+        public override unsafe bool IsFulfilled()
+        {
+            EventFramework* eventFramework = EventFramework.Instance();
+            if (eventFramework == null)
+                return false;
+
+            ContentDirector* contentDirector = eventFramework->GetContentDirector();
+            if (contentDirector == null)
+                return false;
+
+            StdVector<DirectorTodo>* todos = contentDirector->GetDirectorTodos();
+            if (todos == null || this.index >= todos->Count)
+                return false;
+
+            // 只取那個 int 欄位,不整份複製 0x160 bytes 的結構。
+            int current = (*todos)[(int)this.index].CurrentCount;
+
+            return Operations.TryGetValue(this.operatorValue, out Func<object, object, bool>? operationFunc) &&
+                   operationFunc(current, this.count);
+        }
+
+        public override string Describe() => $"副本目標{this.index}進度{this.operatorValue}{this.count}";
     }
 
     public abstract class PathActionConditionLogicCollection : PathActionCondition

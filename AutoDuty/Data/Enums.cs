@@ -370,6 +370,8 @@ namespace AutoDuty.Data
             ActionStatus,
             VariantPath,
             ConditionFlag,
+            Collision,
+            ToDo,
             Not,
             Or,
             And

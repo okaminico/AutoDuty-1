@@ -566,8 +566,8 @@ namespace AutoDuty.IPC
         internal static bool Nav_IsAutoLoad()             => VNavmeshExtraIPC.Nav_IsAutoLoad();
         internal static void Nav_SetAutoLoad(bool on)     => VNavmeshExtraIPC.Nav_SetAutoLoad(on);
 
-        internal static Vector3 Query_Mesh_NearestPoint(Vector3 p, float halfExtentXZ, float halfExtentY) => VNavmeshExtraIPC.Query_Mesh_NearestPoint(p, halfExtentXZ, halfExtentY);
-        internal static Vector3 Query_Mesh_PointOnFloor(Vector3 p, bool allowUnlandable, float halfExtentXZ) => VNavmeshExtraIPC.Query_Mesh_PointOnFloor(p, allowUnlandable, halfExtentXZ);
+        internal static Vector3? Query_Mesh_NearestPoint(Vector3 p, float halfExtentXZ, float halfExtentY) => VNavmeshExtraIPC.Query_Mesh_NearestPoint(p, halfExtentXZ, halfExtentY);
+        internal static Vector3? Query_Mesh_PointOnFloor(Vector3 p, bool allowUnlandable, float halfExtentXZ) => VNavmeshExtraIPC.Query_Mesh_PointOnFloor(p, allowUnlandable, halfExtentXZ);
 
         internal static bool Window_IsOpen()          => VNavmeshExtraIPC.Window_IsOpen();
         internal static void Window_SetOpen(bool on)  => VNavmeshExtraIPC.Window_SetOpen(on);

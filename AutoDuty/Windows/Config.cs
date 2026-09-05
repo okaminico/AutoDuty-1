@@ -2344,6 +2344,7 @@ public static class ConfigTab
                         Configuration.AutoGCTurnin = Configuration.autoGCTurnin;
                         Configuration.Save();
                     }
+                    ImGuiComponents.HelpMarker("Runs Grand Company expert delivery at the end of each loop. AutoDuty travels to your Grand Company, then AutoRetainer hands in the gear in your inventory.\n\nIt never switches character and never starts AutoRetainer's multi-character loop.\n\nHeads up: AutoRetainer runs its full Deliver Items flow, which visits the quartermaster and spends your Grand Company seals on ventures before handing anything in. To keep a reserve, set 'Seals to keep' in AutoRetainer's Grand Company exchange plan.".Loc());
                     
                     ImGui.NextColumn();
 

@@ -82,10 +82,25 @@ namespace AutoDuty.IPC
         /// <summary>(甲) 套件沒有這個端點。</summary>
         [EzIPC("Nav.SetAutoLoad", true)] internal static readonly Action<bool> Nav_SetAutoLoad;
 
-        /// <summary>(丙) 套件回傳 <c>Vector3?</c>，我方是 <c>Vector3</c>。</summary>
-        [EzIPC("Query.Mesh.NearestPoint", true)] internal static readonly Func<Vector3, float, float, Vector3> Query_Mesh_NearestPoint;
-        /// <summary>(丙) 套件回傳 <c>Vector3?</c>，我方是 <c>Vector3</c>。MapHelper 的旗標落地點查詢在用。</summary>
-        [EzIPC("Query.Mesh.PointOnFloor", true)] internal static readonly Func<Vector3, bool, float, Vector3> Query_Mesh_PointOnFloor;
+        /// <summary>
+        /// (原 (丙)，2026-09-05 對齊) 提供端 <c>NavmeshQuery.FindNearestPointOnMesh</c> 回的是 <c>Vector3?</c>，
+        /// 這裡必須跟著是 <c>Vector3?</c>。
+        /// 🔴 宣告成 <c>Vector3</c> 的後果**不是**「拿到零向量」而是 <b>NullReferenceException</b>：
+        /// <c>CallGateChannel.InvokeFunc</c> 只在型別不同時才走 <c>ConvertObject</c>(:142-143)，
+        /// 而 <c>ConvertObject</c> 對 null 立刻回 null(:208) ⇒ <c>return (TRet)result;</c>(:145)
+        /// 對值型別拆箱 null 就擲。**有值時靜默成功，只有「查不到」那一次會炸**，
+        /// 而且堆疊看起來與 IPC 無關。<c>SafeWrapper.IPCException</c> 只攔 <c>IpcNotReadyError</c>，攔不到。
+        /// 📌 套件(<c>ECommons.IPC</c> 的 <c>VnavmeshIPC</c>)現在的形狀與此完全相同，
+        ///    要收斂回套件實例隨時可以，本次刻意只改型別、不動繞送路徑。
+        /// </summary>
+        [EzIPC("Query.Mesh.NearestPoint", true)] internal static readonly Func<Vector3, float, float, Vector3?> Query_Mesh_NearestPoint;
+        /// <summary>
+        /// (原 (丙)，2026-09-05 對齊) 同上，提供端是 <c>NavmeshQuery.FindPointOnFloor</c>，回 <c>Vector3?</c>。
+        /// MapHelper 的旗標落地點查詢在用。
+        /// 🔴 呼叫端**不可以**寫 <c>?? Vector3.Zero</c> 或 <c>GetValueOrDefault()</c> —— 那會把
+        ///    「查不到落點」變成「落點在地圖原點」，然後真的導航走過去。
+        /// </summary>
+        [EzIPC("Query.Mesh.PointOnFloor", true)] internal static readonly Func<Vector3, bool, float, Vector3?> Query_Mesh_PointOnFloor;
 
         /// <summary>(甲) 套件沒有這個端點。</summary>
         [EzIPC("Window.IsOpen", true)] internal static readonly Func<bool> Window_IsOpen;
