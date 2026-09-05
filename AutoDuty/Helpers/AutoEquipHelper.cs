@@ -112,7 +112,7 @@ namespace AutoDuty.Helpers
             }
         }
 
-        private List<(uint ItemId, InventoryType? SourceInventory, byte? SourceInventorySlot, RaptureGearsetModule.GearsetItemIndex TargetSlot)>? _gearset           = null;
+        private List<(uint ItemId, InventoryType? SourceInventory, int? SourceInventorySlot, RaptureGearsetModule.GearsetItemIndex TargetSlot)>? _gearset           = null;
         private int                                                                                                                               _index             = 0;
 
         private void AutoEquipGearSetterUpdate(IFramework framework)
@@ -144,7 +144,7 @@ namespace AutoDuty.Helpers
             }
             else if (this._gearset != null && this._index < this._gearset.Count)
             {
-                (uint itemId, InventoryType? inventoryType, byte? sourceInventorySlot, RaptureGearsetModule.GearsetItemIndex targetSlot) = this._gearset[this._index];
+                (uint itemId, InventoryType? inventoryType, int? sourceInventorySlot, RaptureGearsetModule.GearsetItemIndex targetSlot) = this._gearset[this._index];
                 DebugLog($"Equip item {itemId} in {targetSlot} from {inventoryType} (slot {sourceInventorySlot})");
 
                 if (inventoryType != null && sourceInventorySlot != null)
