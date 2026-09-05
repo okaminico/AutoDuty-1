@@ -2,7 +2,7 @@
   "Author": "Herculezz",
   "Name": "AutoDuty",
   "Punchline": "自動跑本，解放雙手。",
-  "Description": "自動幫你跑副本，支援信賴的同伴、達人指引、士官兵團、多變或一般模式。需搭配 BossModReborn、vnavmesh 與一款戰鬥循環插件（WrathCombo 或 BossMod AutoRotation）使用。",
+  "Description": "自動幫你跑副本，支援親信戰友、劇情輔助器、冒險者分隊、多變或一般模式。需搭配 BossModReborn、vnavmesh 與一款戰鬥循環插件（WrathCombo 或 BossMod AutoRotation）使用。",
   "InternalName": "AutoDuty",
   "DalamudApiLevel": 13,
   "RepoUrl": "https://github.com/ffxiv-tc-port/AutoDuty",

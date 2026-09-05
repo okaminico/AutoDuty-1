@@ -18,7 +18,13 @@ namespace AutoDuty.Helpers
                 if (ContentPathsManager.DictionaryPaths.TryGetValue(territoryId, out ContentPathsManager.ContentPathContainer? container))
                     foreach (Job job in Enum.GetValues<Job>())
                     {
-                        string path = container.SelectPath(out _, job)!.FileName;
+                        // SelectPath 在容器沒有任何可用路徑時回 null(該副本的路徑檔全部解析失敗)。
+                        // 舊寫法的 ! 只關掉了編譯器警告,實際會 NRE。沒有路徑就整個迴圈不必再跑。
+                        ContentPathsManager.DutyPath? selected = container.SelectPath(out _, job);
+                        if (selected == null)
+                            break;
+
+                        string path = selected.FileName;
                         jobs.TryAdd(path, JobWithRole.None);
                         jobs[path] |= job.JobToJobWithRole();
                     }
@@ -40,7 +46,12 @@ namespace AutoDuty.Helpers
 
             foreach (Job job in jwr.ContainedJobs())
             {
-                string path = container.SelectPath(out _, job)!.FileName;
+                // 同上:沒有可用路徑時 SelectPath 回 null,不能直接解參用。
+                ContentPathsManager.DutyPath? selected = container.SelectPath(out _, job);
+                if (selected == null)
+                    break;
+
+                string path = selected.FileName;
                 pathJobConfigs.TryAdd(path, JobWithRole.None);
                 pathJobConfigs[path] |= job.JobToJobWithRole();
             }

@@ -23,7 +23,7 @@ namespace AutoDuty.Helpers
         internal override void Start()
         {
             if (!AutoRetainer_IPCSubscriber.IsEnabled)
-                Svc.Log.Info("GC Turnin Requires AutoRetainer plugin. Get @ https://love.puni.sh/ment.json");
+                Svc.Log.Info("GC Turnin Requires AutoRetainer plugin. Get @ https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/repo.json");
             else
                 base.Start();
         }

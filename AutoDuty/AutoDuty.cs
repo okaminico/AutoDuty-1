@@ -828,12 +828,24 @@ public sealed class AutoDuty : IDalamudPlugin
                 return;
             }
 
-            ContentPathsManager.DutyPath? path = CurrentPath < 0 ?
-                                                     container.SelectPath(out CurrentPath) :
-                                                     container.Paths[CurrentPath > -1 ? CurrentPath : 0];
+            // container.Paths 可能是空的,CurrentPath 也可能指到已經被 RemoveInvalidPaths
+            // 拿掉的索引 —— 這兩種情形舊寫法的 container.Paths[...] 都會擲
+            // ArgumentOutOfRangeException,被下面的 catch 吞成一行 Error,結果是
+            // PathFile 與 Actions 整個沒被設定,留著上一個副本的殘值。
+            // 索引無效時就重新選一次:SelectPath 會一併把有效的索引寫回 CurrentPath,
+            // 容器是空的時候它回 null 並把 CurrentPath 設成 -1,也就是這個檔案既有的
+            // 「沒有路徑」值(見 RunContext.PathIndex 與 MainTab)。
+            // 📌 原本的 `CurrentPath > -1 ? CurrentPath : 0` 是死條件:能走到那一個分支的
+            //    前提就是 CurrentPath >= 0,那個三元運算永遠只會取到 CurrentPath。
+            ContentPathsManager.DutyPath? path = CurrentPath >= 0 && CurrentPath < container.Paths.Count ?
+                                                     container.Paths[CurrentPath] :
+                                                     container.SelectPath(out CurrentPath);
 
             PathFile = path?.FilePath ?? "";
-            Actions = [.. path?.Actions];
+            // path 可能是 null(SelectPath 在容器沒有任何可用路徑時回 null)。
+            // 上一行早就用 ?. 承認了這件事,但 [.. path?.Actions] 在 path 為 null 時
+            // 會對 null 做展開 ⇒ 直接 NRE。空路徑要退回空清單。
+            Actions = path == null ? [] : [.. path.Actions];
             //Svc.Log.Info($"Loading Path: {CurrentPath} {ListBoxPOSText.Count}");
         }
         catch (Exception e)
@@ -1774,8 +1786,18 @@ public sealed class AutoDuty : IDalamudPlugin
         Stage = Stage.Reading_Path;
         States |= PluginState.Navigating;
         StopForCombat = true;
-        if (Configuration.AutoManageVnavAlignCamera && !VNavmesh_IPCSubscriber.Path_GetAlignCamera())
+        // 對齊鏡頭:設定說明承諾的是「開始時打開,結束時若本來沒開就關回去」
+        // (Config.cs 的 HelpMarker:"...and disable it when done if it was not set")。
+        // 這裡只負責前半段,並記下「進來時是關的」;還原在 SetGeneralSettings(true)。
+        // 🔴 一定要先過 IsEnabled:vnavmesh 沒裝時 SafeWrapper.IPCException 會把
+        //    Path_GetAlignCamera() 靜默吃成 default(false),少了這道閘門就會把
+        //    「根本沒有 vnavmesh」誤記成「本來是關的」,結束時對著空氣還原。
+        if (Configuration.AutoManageVnavAlignCamera && VNavmesh_IPCSubscriber.IsEnabled && !VNavmesh_IPCSubscriber.Path_GetAlignCamera())
+        {
+            _settingsActive |= SettingsActive.Vnav_Align_Camera_On;
+            Svc.Log.Information("vnavmesh 對齊鏡頭:進導航前是關的,導航期間打開,整趟結束時會關回去");
             VNavmesh_IPCSubscriber.Path_SetAlignCamera(true);
+        }
 
         if (this.Configuration is { AutoManageBossModAISettings: true, BM_UpdatePresetsAutomatically: true })
         {
@@ -1865,11 +1887,23 @@ public sealed class AutoDuty : IDalamudPlugin
 
     private void GetGeneralSettings()
     {
+        // ── 歷史:對齊鏡頭的「舊政策」擷取端 ──
+        // 下面這兩行(原文逐字保留)是上游早年的政策:「使用者本來開著 → 進場先關掉 →
+        // 結束再開回來」,對應旗標 SettingsActive.Vnav_Align_Camera_Off。
+        // 它在本 repo 可考的最早一顆 commit 就已經是註解掉的狀態,而且 erdelf(上游)、
+        // aliceric27、okaminico 等所有 fork 至今都維持註解掉——不是我們的合併弄丟的。
+        // 現行政策方向相反(StartNavigation 進導航時「打開」),所以這段不可以直接取消註解:
+        // 那會變成兩個相反的政策同時存在。現行政策的擷取端在 StartNavigation(),
+        // 還原端在 SetGeneralSettings() 裡的 Vnav_Align_Camera_On 分支。
         /*
         if (Configuration.AutoManageVnavAlignCamera && VNavmesh_IPCSubscriber.IsEnabled && VNavmesh_IPCSubscriber.Path_GetAlignCamera())
             _settingsActive |= SettingsActive.Vnav_Align_Camera_Off;
         */
-        if (YesAlready_IPCSubscriber.IsEnabled && YesAlready_IPCSubscriber.IsEnabled)
+        // 🔴 這裡原本是 `IsEnabled && IsEnabled`（同一個條件寫兩次）——上游 erdelf 是
+        //    `IsEnabled && IsPluginEnabled()`。重複的版本讓「YesAlready 只要裝著」就設旗標，
+        //    不管使用者有沒有開它 ⇒ AutoDuty 進場把它關掉、結束再打開，
+        //    於是**本來刻意關著的 YesAlready 會被 AutoDuty 打開**。
+        if (YesAlready_IPCSubscriber.IsEnabled && YesAlready_IPCSubscriber.IsPluginEnabled())
             _settingsActive |= SettingsActive.YesAlready;
 
         if (PandorasBox_IPCSubscriber.IsEnabled && PandorasBox_IPCSubscriber.GetFeatureEnabled("Auto-interact with Objects in Instances"))
@@ -1888,15 +1922,49 @@ public sealed class AutoDuty : IDalamudPlugin
             Svc.Log.Debug($"Setting VnavAlignCamera: {on}");
             VNavmesh_IPCSubscriber.Path_SetAlignCamera(on);
         }
+
+        // 上面那條是舊政策的還原端:設它的旗標那段在 GetGeneralSettings() 裡是註解掉的,
+        // 所以條件永遠不成立、實際是死碼。原樣保留(與上游一致),不要當成清理刪掉。
+        //
+        // 下面這條才是現行政策的還原端:StartNavigation() 把「本來關著」的對齊鏡頭打開了,
+        // 這裡在整趟真的結束時關回去——設定說明承諾的那一半,在此之前一直沒有實作,
+        // 於是使用者的對齊鏡頭被單向打開後就再也不會關回去。
+        //
+        // 🔴 為什麼要額外擋 Looping/Navigating:SetGeneralSettings(true) 有四個呼叫點,
+        //    只有 StopAndResetALL() 代表「整趟結束」(它是 Stage.Stopped 的 setter 唯一入口,
+        //    所有停止路徑與 Dispose 都會過)。另外三個是單機流程的收尾
+        //    (ActiveHelperBase.HelperStopUpdate / GotoHelper.Stop / MapHelper.StopMoveToMapMarker),
+        //    它們雖然都有 !Looping 閘門,但 IPC 的 Start() / 指令 "start" 會走進
+        //    「Navigating 有、Looping 沒有」的狀態,那時助手收尾就會提早打進來,
+        //    把還在導航中的鏡頭設定關掉。補上 Navigating 這一軸才是完整的閘門。
+        //    StopAndResetALL() 在呼叫本函式之前已經把 States 清成 None,所以正常收尾照樣會過。
+        // 🔴 旗標只在「真的還原到了」才清:被閘門擋下時留著,等真正結束時再還原,不會漏掉。
+        if (on
+            && Configuration.AutoManageVnavAlignCamera
+            && _settingsActive.HasFlag(SettingsActive.Vnav_Align_Camera_On)
+            && !States.HasAnyFlag(PluginState.Looping, PluginState.Navigating))
+        {
+            _settingsActive &= ~SettingsActive.Vnav_Align_Camera_On;
+            Svc.Log.Information("還原 vnavmesh 對齊鏡頭:關回進導航前的狀態(關閉)");
+            if (VNavmesh_IPCSubscriber.IsEnabled)
+                VNavmesh_IPCSubscriber.Path_SetAlignCamera(false);
+        }
+        // 🔴 還原之後要把旗標清掉。原本 _settingsActive 只有 `|=`、全檔沒有任何清除 ⇒ 旗標終身累積，
+        //    於是：第 1 趟時 Pandora 的某功能開著（旗標設起）→ 使用者之後手動關掉它 →
+        //    第 2 趟結束時 AutoDuty 仍然照著過期的旗標**把它重新打開**。
+        //    清掉之後，下一趟的 GetGeneralSettings() 會重新評估當下的實際狀態。
+        //    ⚠️ 只在 on==true（還原那一側）清；on==false 是剛設起旗標的那一側，不能清。
         if (PandorasBox_IPCSubscriber.IsEnabled && _settingsActive.HasFlag(SettingsActive.Pandora_Interact_Objects))
         {
             Svc.Log.Debug($"Setting PandorasBos Auto-interact with Objects in Instances: {on}");
             PandorasBox_IPCSubscriber.SetFeatureEnabled("Auto-interact with Objects in Instances", on);
+            if (on) _settingsActive &= ~SettingsActive.Pandora_Interact_Objects;
         }
         if (YesAlready_IPCSubscriber.IsEnabled && _settingsActive.HasFlag(SettingsActive.YesAlready))
         {
             Svc.Log.Debug($"Setting YesAlready Enabled: {on}");
             YesAlready_IPCSubscriber.SetState(on);
+            if (on) _settingsActive &= ~SettingsActive.YesAlready;
         }
     }
 
@@ -2396,6 +2464,17 @@ public sealed class AutoDuty : IDalamudPlugin
         // CheckFinishing() 的 else 分支就在每幀路徑上,少了這個邊緣判斷會一直念。
         if (_stage == Stage.Stopped)
             return;
+
+        // 🔴 刻意放在 NotifyWhenStoppedItself 的閘門「之前」：那個旗標是「Dalamud 桌面通知」
+        //    的開關而且預設關；語音通知是另一件事、有自己的開關，兩者不該互相牽連。
+        // 🔴 IPC 的實作跑在呼叫端的執行緒上 ⇒ 一律丟回主執行緒再叫（已在主執行緒時是同步執行）。
+        // 🔴 fail-safe：TataruPraise 沒裝／關著／池裡沒句子都只是安靜的 no-op，絕不影響跑本流程。
+        if (Configuration.TataruPraiseOnStoppedItself)
+        {
+            // 區域副本：流程分析的「非 null」推不進 lambda，直接捕獲 reason 會是 string?。
+            string praiseReason = reason;
+            _ = Svc.Framework.RunOnFrameworkThread(() => TataruPraiseIPC.TryPraise(praiseReason));
+        }
 
         if (!Configuration.NotifyWhenStoppedItself)
             return;

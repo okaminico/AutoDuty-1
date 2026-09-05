@@ -270,12 +270,12 @@ public class MainWindow : Window, IDisposable
                             if (AutoRetainer_IPCSubscriber.IsEnabled)
                                 GCTurninHelper.Invoke();
                             else
-                                ShowPopup("Missing Plugin".Loc(), "GC Turnin Requires AutoRetainer plugin. Get @ https://love.puni.sh/ment.json".Loc());
+                                ShowPopup("Missing Plugin".Loc(), "GC Turnin Requires AutoRetainer plugin. Get @ https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/repo.json".Loc());
                         }
                         if (AutoRetainer_IPCSubscriber.IsEnabled)
                             ToolTip("Click to Goto GC Turnin and Invoke AutoRetainer's GC Turnin".Loc());
                         else
-                            ToolTip("GC Turnin Requires AutoRetainer plugin. Get @ https://love.puni.sh/ment.json".Loc());
+                            ToolTip("GC Turnin Requires AutoRetainer plugin. Get @ https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/repo.json".Loc());
                     }
                 }
             }

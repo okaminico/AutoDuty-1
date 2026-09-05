@@ -2,6 +2,7 @@ using Dalamud.Interface.Utility.Raii;
 using ECommons.DalamudServices;
 using ECommons;
 using Dalamud.Bindings.ImGui;
+using System.Text;
 using System.Text.Json;
 using System;
 using System.Numerics;
@@ -229,7 +230,26 @@ namespace AutoDuty.Windows
 
                     pathFile.Actions = [.. Plugin.Actions];
                     string json = JsonSerializer.Serialize(pathFile, jsonSerializerOptions);
-                    File.WriteAllText(Plugin.PathFile, json);
+
+                    // 原子寫入。舊寫法直接覆寫目標檔,寫到一半崩潰/斷電就留下被截斷的 path json,
+                    // 而載入端只會把它判成 invalid ⇒ 使用者的路徑「消失」而且沒有任何備份。
+                    // 先寫同目錄的暫存檔 → 讀回來逐字驗過 → File.Move(overwrite) 換上去。
+                    // 🔴 暫存檔必須與目標同一個磁碟機(這裡刻意用同一個目錄):跨磁碟機的
+                    //    File.Move 在 Windows 會失敗。
+                    // ⚠️ 副檔名刻意不是 .json:FileHelper 的 FileSystemWatcher 與目錄列舉都用
+                    //    "*.json" 過濾,.tmp 不會被當成路徑檔載入,也不會觸發重建。
+                    // 想法來源:okaminico/AutoDuty@ce554064(該版只有「寫暫存 + Move」,沒有寫回驗證)。
+                    string tempPath = Plugin.PathFile + ".tmp";
+                    File.WriteAllText(tempPath, json);
+
+                    string verify;
+                    using (StreamReader verifyReader = new(tempPath, Encoding.UTF8))
+                        verify = verifyReader.ReadToEnd();
+
+                    if (!string.Equals(verify, json, StringComparison.Ordinal))
+                        throw new IOException($"寫入暫存檔後讀回的內容與序列化結果不符,原路徑檔保持不變:{tempPath}");
+
+                    File.Move(tempPath, Plugin.PathFile, true);
                     Plugin.CurrentPath = 0;
                 }
                 catch (Exception e)

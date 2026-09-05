@@ -268,7 +268,12 @@ namespace AutoDuty.Data
             PreLoop_Enabled = 8,
             BetweenLoop_Enabled = 16,
             TerminationActions_Enabled = 32,
-            BareMode_Active = 64
+            BareMode_Active = 64,
+            /// <summary>
+            /// 「進導航前對齊鏡頭是關的,被 AutoDuty 打開了」——還原＝關回去。
+            /// 方向與 <see cref="Vnav_Align_Camera_Off"/> 相反(那個是舊政策:本來開著先關掉、結束再開回來)。
+            /// </summary>
+            Vnav_Align_Camera_On = 128
         }
 
         public enum Sounds : byte

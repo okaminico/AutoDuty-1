@@ -26,7 +26,7 @@ namespace AutoDuty.Helpers
                 return;
             DebugLog("AutoRetainerHelper.Invoke");
             if (!AutoRetainer_IPCSubscriber.IsEnabled)
-                Svc.Log.Info("AutoRetainer requires a plugin, visit https://puni.sh/plugin/AutoRetainer for more info");
+                Svc.Log.Info("AutoRetainer requires a plugin, visit https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/repo.json for more info");
             else if (State != ActionState.Running) 
                 base.Start();
         }
