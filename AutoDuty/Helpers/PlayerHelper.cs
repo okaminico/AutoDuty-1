@@ -43,6 +43,10 @@ namespace AutoDuty.Helpers
         /// <see cref="IndexOutOfRangeException"/>。舊寫法的 <c>?? 0</c> 只擋「查無此列」,
         /// <b>擋不到「列存在但 ExpArrayIndex 是 -1」</b>。
         /// <br/><br/>
+        /// 📌 上下界都擋,長度取自 <c>ClassJobLevels.Length</c> 而不是寫死 35。
+        /// 台服現況最大 <c>ExpArrayIndex</c> 是 31,所以上界今天不會觸發 ——
+        /// 它擋的是未來新職業超出陣列長度的同類崩潰。
+        /// <br/><br/>
         /// 🔴 這個函式的呼叫點裡,<c>ConfigTab.DrawPlannerUi</c> 與 <c>MainTab</c> 都在 ImGui 繪製
         /// 路徑上 —— 擲一次例外整個主視窗就不畫,而 Dalamud 在 10 秒內收到兩次 <c>Draw()</c> 例外
         /// 會<b>永久停用該視窗</b>,外掛端清不掉,使用者看到的是「主視窗突然消失」。
@@ -69,14 +73,14 @@ namespace AutoDuty.Helpers
             }
 
             var expArrayIndex = classJobRow.Value.ExpArrayIndex;
-            if (expArrayIndex < 0)
+            var levels = PlayerState.Instance()->ClassJobLevels;
+            if (expArrayIndex < 0 || expArrayIndex >= levels.Length)
             {
-                LogMissingExpArrayIndexOnce(resolvedJob, $"ExpArrayIndex 為 {expArrayIndex}(該職業沒有經驗值欄位)");
+                LogMissingExpArrayIndexOnce(resolvedJob, $"ExpArrayIndex 為 {expArrayIndex},不在 0..{levels.Length - 1} 範圍內");
                 return 0;
             }
 
-            PlayerState* playerState = PlayerState.Instance();
-            return playerState->ClassJobLevels[expArrayIndex];
+            return levels[expArrayIndex];
         }
 
         private static readonly HashSet<uint> LoggedJobsWithoutExpArrayIndex = new();
