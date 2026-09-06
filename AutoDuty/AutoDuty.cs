@@ -1512,7 +1512,7 @@ public sealed class AutoDuty : IDalamudPlugin
         if (!VNavmesh_IPCSubscriber.SimpleMove_PathfindInProgress() && !VNavmesh_IPCSubscriber.Path_IsRunning())
         {
             Chat.Instance.ExecuteCommand("/automove off");
-            VNavmesh_IPCSubscriber.Path_SetTolerance(0.25f);
+            VNavmesh_IPCSubscriber.Path_RequestTolerance(0.25f);
             if (PathAction.Name == "MoveTo" && PathAction.Arguments.Count > 0 && bool.TryParse(PathAction.Arguments[0], out bool useMesh) && !useMesh)
             {
                 VNavmesh_IPCSubscriber.Path_MoveTo([PathAction.Position], false);
@@ -2203,6 +2203,11 @@ public sealed class AutoDuty : IDalamudPlugin
         // 會在副本跑到一半自己醒過來搶按窗。
         YesAlready_IPCSubscriber.Tick();
 
+        // 🔴 vnavmesh 路徑容許值租約的續約心跳＋閒置放約(內部自行節流;
+        //    沒有租約時是一個欄位判斷就返回)。租約上限 5 分鐘,不續約的話
+        //    容許值會在副本跑到一半跳回使用者的值。
+        VnavmeshToleranceLease.Tick();
+
         // 任務逾時的觀察哨。必須跑在 TaskManager 自己的 Tick 之後 —— 這是成立的:
         // 建構子先 TaskManager = new()(它在自己的建構子裡掛上 Svc.Framework.Update),
         // 之後才 Svc.Framework.Update += Framework_Update,多播委派照訂閱順序呼叫。
@@ -2418,8 +2423,12 @@ public sealed class AutoDuty : IDalamudPlugin
             Indexer = -1;
         if (this.Configuration is { ShowOverlay: true, HideOverlayWhenStopped: true })
             Overlay.IsOpen = false;
-        if (VNavmesh_IPCSubscriber.IsEnabled && VNavmesh_IPCSubscriber.Path_GetTolerance() > 0.25F)
-            VNavmesh_IPCSubscriber.Path_SetTolerance(0.25f);
+        // 放開路徑容許值租約。
+        // 🔴 改動前這裡是無條件的 「Path_GetTolerance() > 0.25 就寫回 0.25」——那在租約模式下會變成新的越權:
+        //    Path.GetTolerance 回的是「實際生效的值」(租約值 ?? 使用者的值),讀到的可能是
+        //    我們自己、甚至是別的外掛押著的租約值,而寫回去的目標卻是使用者那格欄位。
+        //    改成:租約模式下只放約(提供端自動還原),只有真的走過舊路徑時才做原本那段還原。
+        VNavmesh_IPCSubscriber.Path_ReleaseToleranceRequest();
         FollowHelper.SetFollow(null);
 
         ActiveRunContext = null;

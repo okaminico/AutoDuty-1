@@ -102,6 +102,30 @@ namespace AutoDuty.IPC
         /// </summary>
         [EzIPC("Query.Mesh.PointOnFloor", true)] internal static readonly Func<Vector3, bool, float, Vector3?> Query_Mesh_PointOnFloor;
 
+        // -- 移動租約(vnavmesh v7.20.0.37 起)。(甲) 套件一支都沒有。 ------------------
+        // 🔑 用來取代對 Path.SetTolerance 的單向寫入:Acquire 拿一把 Guid 憑證 →
+        //    SetLeasedTolerance(憑證, 值) 才生效 → 每 30 秒 RenewSuppressionFor(憑證) 心跳 →
+        //    做完 ReleaseSuppression(憑證)。放約或逾時(上限 5 分鐘)就自動還原成使用者的值。
+        //    狀態機在 VnavmeshToleranceLease.cs。
+        // 🔴 提供端全部回「不可為 null 的值型別」(Guid / bool),失敗回 Guid.Empty / false、
+        //    永不回 null —— 所以這裡也必須宣告成不可空。宣告成 Guid? / bool? 會讓
+        //    CallGateChannel 走 ConvertObject 的 JSON 來回轉換路徑,形狀對不上時是靜默的。
+        // 🔴 提供端沒有這幾支時(vnavmesh 沒安裝或版本太舊):SafeWrapper.IPCException 會把
+        //    IpcNotReadyError 吃掉並回 default ⇒ Guid.Empty。呼叫端就是靠這個訊號退回舊路徑的。
+        /// <summary>(甲) 取得一把記名的移動租約;回 <see cref="Guid.Empty"/>＝提供端給不了。</summary>
+        [EzIPC("Path.AcquireSuppressionFor", true)] internal static readonly Func<string, int, Guid> Path_AcquireSuppressionFor;
+        /// <summary>
+        /// (甲) 續約(心跳)。<b>回 <see langword="false"/> 代表那把已經不在了</b>,
+        /// 必須重新取得,不要當成續約成功。
+        /// </summary>
+        [EzIPC("Path.RenewSuppressionFor", true)] internal static readonly Func<Guid, int, bool> Path_RenewSuppressionFor;
+        /// <summary>(甲) 交回一把租約。冪等。</summary>
+        [EzIPC("Path.ReleaseSuppression", true)] internal static readonly Func<Guid, bool> Path_ReleaseSuppression;
+        /// <summary>
+        /// (甲) 用這把租約押住路徑容許值(提供端夾在 0.01～100,並明確拒絕 NaN／無限大)。
+        /// 回 <see langword="false"/>＝這把租約已經不在了,或傳進去的值不是有限數。
+        /// </summary>
+        [EzIPC("Path.SetLeasedTolerance", true)] internal static readonly Func<Guid, float, bool> Path_SetLeasedTolerance;
         /// <summary>(甲) 套件沒有這個端點。</summary>
         [EzIPC("Window.IsOpen", true)] internal static readonly Func<bool> Window_IsOpen;
         /// <summary>(甲) 套件沒有這個端點。</summary>

@@ -583,6 +583,18 @@ namespace AutoDuty.IPC
         internal static float Path_GetTolerance()                   => Pkg.GetTolerance();
         internal static void Path_SetTolerance(float tolerance)     => Pkg.SetTolerance(tolerance);
 
+        /// <summary>
+        /// 請求把路徑容許值押成 <paramref name="tolerance"/>。<b>取代對 <see cref="Path_SetTolerance"/> 的直接呼叫</b>:
+        /// 走 vnavmesh 的具名租約(放約／逾時自動還原,不碰使用者那格欄位),
+        /// 提供端給不了租約時逐字退回 <see cref="Path_SetTolerance"/>。詳見 <see cref="VnavmeshToleranceLease"/>。
+        /// </summary>
+        internal static void Path_RequestTolerance(float tolerance) => VnavmeshToleranceLease.Request(tolerance);
+
+        /// <summary>
+        /// 放開路徑容許值租約;只有在真的走過舊路徑時才順帶做舊的還原。冪等。
+        /// </summary>
+        internal static void Path_ReleaseToleranceRequest() => VnavmeshToleranceLease.ReleaseAndRestore();
+
         internal static bool SimpleMove_PathfindInProgress() => Pkg.PathfindInProgress();
 
         // ── ECommons 4906fd97 之後才收得回來的三支 ──
