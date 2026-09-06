@@ -2379,6 +2379,8 @@ public sealed class AutoDuty : IDalamudPlugin
     {
         ClearWaitStepTiming();
         BossMod_IPCSubscriber.ResetStayCloseToTankCache();
+        // 別的外掛透過 IPC 壓上來的設定覆寫,在停止時一律還原(呼叫端不必記得 Pop)。
+        ConfigOverrideHelper.Pop();
         if (_bareModeSettingsActive != SettingsActive.None)
         {
             Configuration.EnablePreLoopActions = _bareModeSettingsActive.HasFlag(SettingsActive.PreLoop_Enabled);
