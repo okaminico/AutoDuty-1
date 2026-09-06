@@ -148,6 +148,15 @@ namespace AutoDuty.Data
 
             [JsonPropertyName("note")]
             public string Note { get; set; } = string.Empty;
+
+            /// <summary>
+            /// 這個步驟的旗標。預設 <see cref="PathActionFlags.None"/>(＝加入本欄位之前的行為)。
+            /// 上游把原本寫在 <see cref="Note"/> 裡的 <c>!TankClose</c> 慣例換成了這個欄位,
+            /// 所以少了它,取回上游路徑檔時整個標記會被靜默丟掉(System.Text.Json 預設忽略未對應成員)。
+            /// </summary>
+            [JsonConverter(typeof(JsonStringEnumConverter))]
+            [JsonPropertyName("flags")]
+            public PathActionFlags Flags { get; set; } = PathActionFlags.None;
         }
 
         public class PathFileMetaData

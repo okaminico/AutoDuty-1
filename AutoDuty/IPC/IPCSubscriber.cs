@@ -280,6 +280,45 @@ namespace AutoDuty.IPC
             }
         }
 
+        /// <summary>上一次真的送出去的 Role 值,避免每幀重送同一個值洗 IPC 與 log。</summary>
+        private static string _lastPartyRoleSent = string.Empty;
+
+        /// <summary>快取歸零。切換副本／停止時呼叫,免得跨副本沿用上一場的判斷。</summary>
+        public static void ResetStayCloseToTankCache() => _lastPartyRoleSent = string.Empty;
+
+        /// <summary>
+        /// 送出 BossMod MiscAI 的 StayCloseToPartyRole「跟著坦克走」軌道。
+        /// </summary>
+        /// <remarks>
+        /// 🔴 <c>Configuration.PartyCoherency</c> 關著時一律送 <c>None</c>(＝BossMod 該軌道的預設值),
+        /// 所以「功能沒開」與「沒有這個功能」在 BossMod 端是同一個狀態,而且使用者中途關掉時
+        /// 會自己歸位,不會留下上一次設好的 Tank。
+        /// ⚠️ 軌道名 <c>Role</c> 是大寫 R(BossModReborn 的 <c>Tracks.Role</c> 直接拿列舉成員名當
+        /// InternalName),大小寫不符會靜默回 false、整筆被丟掉 —— 與 SetRange 那條同一個坑。
+        /// </remarks>
+        public static void StayCloseToTank(bool close)
+        {
+            if (!Plugin.Configuration.AutoManageBossModAISettings)
+                return;
+
+            string role = close && Plugin.Configuration.PartyCoherency ? nameof(Data.Enums.Role.Tank) : "None";
+
+            if (role == _lastPartyRoleSent)
+                return;
+
+            bool active  = Presets_AddTransientStrategy("AutoDuty",         "BossMod.Autorotation.MiscAI.StayCloseToPartyRole", "Role", role);
+            bool passive = Presets_AddTransientStrategy("AutoDuty Passive", "BossMod.Autorotation.MiscAI.StayCloseToPartyRole", "Role", role);
+
+            _lastPartyRoleSent = role;
+
+            if (!IsEnabled)
+                Svc.Log.Information($"BMR StayCloseToPartyRole Role={role}:BossMod／BossModReborn 沒有啟用,這次沒有送出。");
+            else if (active || passive)
+                Svc.Log.Information($"BMR StayCloseToPartyRole Role={role} 已送出(AutoDuty={active}、AutoDuty Passive={passive})。");
+            else
+                Svc.Log.Information($"BMR StayCloseToPartyRole Role={role} 沒有生效:兩個 preset 都不接受這條軌道(軌道名或模組不存在)。");
+        }
+
         public static void SetPositional(Positional positional)
         {
             if (Plugin.Configuration.AutoManageBossModAISettings)

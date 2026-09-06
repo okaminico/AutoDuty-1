@@ -357,6 +357,22 @@ namespace AutoDuty.Data
         }
 
         /// <summary>
+        /// 路徑步驟的旗標。值會逐字寫進 path json 的 <c>Flags</c> 欄位(字串,以逗號分隔),
+        /// 改名等於改檔案格式。<see cref="None"/> 是零值,缺欄位時就是它。
+        /// </summary>
+        [Flags]
+        public enum PathActionFlags : int
+        {
+            None = 0,
+
+            /// <summary>
+            /// 這一步不要跟坦克保持隊形(不送 BossMod 的 StayCloseToPartyRole)。
+            /// 只有在設定裡開了「隊形跟隨坦克」時才有意義。
+            /// </summary>
+            NoPartyCoherency = 1 << 0
+        }
+
+        /// <summary>
         /// 路徑步驟條件的種類。字串值會出現在 path json 的 <c>$type</c> 判別碼裡,
         /// 名稱必須與 <see cref="PathActionCondition"/> 的子類別對應,改名等於改檔案格式。
         /// </summary>

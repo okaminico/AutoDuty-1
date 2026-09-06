@@ -422,6 +422,21 @@ namespace AutoDuty.Windows
                     ImGui.EndCombo();
                 }
             }
+
+            if (_action != null && !_comment)
+            {
+                // _action 在「修改既有步驟」時就是清單裡那個物件,所以直接改它的旗標即可;
+                // 新增步驟時 _action 是 DrawAddActionUIPopup 之前就建好的實例,同樣有效。
+                bool noPartyCoherency = _action.Flags.HasFlag(PathActionFlags.NoPartyCoherency);
+                if (ImGui.Checkbox("Disable Party Coherency".Loc(), ref noPartyCoherency))
+                {
+                    if (noPartyCoherency)
+                        _action.Flags |= PathActionFlags.NoPartyCoherency;
+                    else
+                        _action.Flags &= ~PathActionFlags.NoPartyCoherency;
+                }
+                ImGuiComponents.HelpMarker("This step will not ask BossMod AI to stay close to the tank.".Loc());
+            }
         }
 
         private static bool guide = false;

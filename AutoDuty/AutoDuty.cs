@@ -1498,6 +1498,11 @@ public sealed class AutoDuty : IDalamudPlugin
             }
         }
 
+        // 隊形:非王步驟時跟著坦克走,除非這一步標了 NoPartyCoherency。
+        // ⚠️ StayCloseToTank 內部還有 Configuration.PartyCoherency 這道閘門(預設關),關著時一律送 None。
+        BossMod_IPCSubscriber.StayCloseToTank(!(PathAction.Name.Equals("Boss", StringComparison.InvariantCultureIgnoreCase) ||
+                                                PathAction.Flags.HasFlag(PathActionFlags.NoPartyCoherency)));
+
         if (PathAction.Position == Vector3.Zero)
         {
             Stage = Stage.Action;
@@ -2373,6 +2378,7 @@ public sealed class AutoDuty : IDalamudPlugin
     private void StopAndResetALL()
     {
         ClearWaitStepTiming();
+        BossMod_IPCSubscriber.ResetStayCloseToTankCache();
         if (_bareModeSettingsActive != SettingsActive.None)
         {
             Configuration.EnablePreLoopActions = _bareModeSettingsActive.HasFlag(SettingsActive.PreLoop_Enabled);
