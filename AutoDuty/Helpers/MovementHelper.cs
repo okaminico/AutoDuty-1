@@ -70,7 +70,7 @@ namespace AutoDuty.Helpers
             }
 
             if (VNavmesh_IPCSubscriber.Path_NumWaypoints() == 1)
-                VNavmesh_IPCSubscriber.Path_SetTolerance(lastPointTollerance);
+                VNavmesh_IPCSubscriber.Path_RequestTolerance(lastPointTollerance);
 
             if (!useMesh)
             {
@@ -89,7 +89,7 @@ namespace AutoDuty.Helpers
             if (!VNavmesh_IPCSubscriber.SimpleMove_PathfindInProgress() || VNavmesh_IPCSubscriber.Path_NumWaypoints() == 0)
             {
                 Chat.Instance.ExecuteCommand("/automove off");
-                VNavmesh_IPCSubscriber.Path_SetTolerance(tollerance);
+                VNavmesh_IPCSubscriber.Path_RequestTolerance(tollerance);
                 VNavmesh_IPCSubscriber.SimpleMove_PathfindAndMoveTo(position, fly);
             }
             return false;

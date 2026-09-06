@@ -347,10 +347,25 @@ public class AutoDutySerializationFactory : DefaultSerializationFactory, ISerial
 {
     public override string DefaultConfigFileName { get; } = "AutoDutyConfig.json";
 
-    public new string Serialize(object config) => 
-        base.Serialize(config, true);
+    /// <summary>
+    /// 🔴 <b>存檔真正走的序列化出口就是這一支</b>,不是 <see cref="SerializeAsBin"/>。
+    /// </summary>
+    /// <remarks>
+    /// <c>EzConfig.SaveConfiguration</c> 依 <c>IsBinary</c> 二選一,而
+    /// <c>DefaultSerializationFactory.IsBinary</c> 是 <b>false</b> 且本類別沒有覆寫它
+    /// ⇒ 走的是 <c>serializationFactory.Serialize(Configuration)</c> 這條,<c>SerializeAsBin</c>
+    /// 在存檔路徑上<b>根本不會被呼叫</b>。
+    /// 而本類別的基底清單重新列出了 <c>ISerializationFactory</c>,介面對應因此從本類別重算,
+    /// 所以這支 <c>new</c> 方法會接走介面派送(不重列介面的話會落回基底,實測對照組已驗)。
+    /// ⇒ 「IPC 覆寫值不可以被寫進設定檔」掛在這裡才有效;掛在 <c>SerializeAsBin</c> 上是死碼。
+    /// ⚠️ 這裡只做序列化(純 CPU),檔案是 <c>SaveConfiguration</c> 拿到字串之後才寫的,
+    /// 所以 <c>WithUserValues</c> 持鎖的期間不含檔案 I/O。
+    /// </remarks>
+    public new string Serialize(object config) =>
+        ConfigOverrideHelper.WithUserValues(() => base.Serialize(config, true));
 
-    public override byte[] SerializeAsBin(object config) => 
+    /// <summary>存檔路徑不會走到這裡(見 <see cref="Serialize(object)"/>),它轉呼叫上面那支,所以一樣被包住。</summary>
+    public override byte[] SerializeAsBin(object config) =>
         Encoding.UTF8.GetBytes(this.Serialize(config));
 }
 
@@ -643,6 +658,17 @@ public class Configuration
     //BMAI Config Options
     public bool HideBossModAIConfig           = false;
     public bool BM_UpdatePresetsAutomatically = true;
+
+    /// <summary>
+    /// 非王步驟時要不要請 BossMod 的 AI 跟著隊伍裡的坦克走(StayCloseToPartyRole)。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 <b>預設關,等於本欄位加入之前的行為</b> —— 這個功能本 fork 從來沒有過(上游有),
+    /// 開了會讓角色在戰鬥中多一個「靠向坦克」的目標區,與既有的 StayCloseToTarget 疊加。
+    /// 路徑步驟可以用 <see cref="PathActionFlags.NoPartyCoherency"/> 單獨關掉某一步;
+    /// 王步驟(Name == "Boss")一律不跟。
+    /// </remarks>
+    public bool PartyCoherency = false;
 
 
     internal bool maxDistanceToTargetRoleBased = true;
@@ -1129,6 +1155,18 @@ public static class ConfigTab
         if (MainWindow.CurrentTabName != "Config")
             MainWindow.CurrentTabName = "Config";
 
+        // 有別的外掛正在用 IPC 覆寫設定時,這一頁顯示的是「覆寫後」的值,改了也會在覆寫結束時
+        // 被還原掉 —— 這件事必須在頁面上看得見,不能只寫進 log。
+        bool overridesActive = ConfigOverrideHelper.HasOverrides;
+        if (overridesActive)
+        {
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudYellow,
+                                "Another plugin is temporarily overriding AutoDuty's settings. The values below are the overridden ones and cannot be edited until it releases them; your own settings are untouched and will come back.".Loc());
+            ImGui.Separator();
+        }
+
+        using var overrideLock = ImRaii.Disabled(overridesActive);
+
         //Start of Profile Selection
         ImGui.AlignTextToFramePadding();
         ImGui.Text("Currently selected profile: ".Loc());
@@ -1602,6 +1640,13 @@ public static class ConfigTab
                     }
                     if (ImGui.Checkbox("Update Presets automatically".Loc(), ref Configuration.BM_UpdatePresetsAutomatically))
                         Configuration.Save();
+                    if (ImGui.Checkbox("Stay Close to Tank (Party Coherency)".Loc(), ref Configuration.PartyCoherency))
+                    {
+                        // 關掉的當下就把 BossMod 那條軌道歸零,不要等到下一次讀路徑步驟。
+                        BossMod_IPCSubscriber.StayCloseToTank(false);
+                        Configuration.Save();
+                    }
+                    ImGuiComponents.HelpMarker("Off by default. When on, AutoDuty asks BossMod AI to keep you near the party's tank on every non-boss step. Individual path steps can opt out with the NoPartyCoherency flag.".Loc());
                     if (ImGui.Checkbox("Set Max Distance To Target Based on Player Role".Loc(), ref Configuration.maxDistanceToTargetRoleBased))
                     {
                         Configuration.MaxDistanceToTargetRoleBased = Configuration.maxDistanceToTargetRoleBased;

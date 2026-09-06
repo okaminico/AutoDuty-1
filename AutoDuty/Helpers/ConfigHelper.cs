@@ -54,6 +54,16 @@ namespace AutoDuty.Helpers
             return null;
         }
 
+        /// <summary>
+        /// 把字串轉成某個設定欄位的型別。轉不過去回 <c>null</c> 並在 <paramref name="failReason"/> 說明原因。
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ 實作(<c>Convert.ChangeType</c>)對不合法的字串是<b>擲例外</b>不是回 null,呼叫端要自己 catch。
+        /// 這只是把既有的私有多載開放給 <see cref="ConfigOverrideHelper"/> 用,行為完全沒動。
+        /// </remarks>
+        internal static object? ConvertConfigValue(Type configType, string configValue, out string failReason) =>
+            ModifyConfig(configType, configValue, out failReason);
+
         internal static bool ModifyConfig(string configName, params string[] configValues)
         {
 

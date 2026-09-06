@@ -325,6 +325,7 @@
         "Option": "Automatic"
       }
     ],
+    "BossMod.Autorotation.MiscAI.StayCloseToPartyRole": [],
     "BossMod.Autorotation.MiscAI.StayCloseToTarget": [],
     "BossMod.Autorotation.xan.HealerAI": [
       {

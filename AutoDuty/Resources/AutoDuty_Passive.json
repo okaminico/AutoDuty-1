@@ -1,6 +1,7 @@
 {
   "Name": "AutoDuty Passive",
   "Modules": {
+    "BossMod.Autorotation.MiscAI.StayCloseToPartyRole": [],
     "BossMod.Autorotation.MiscAI.StayCloseToTarget": [],
     "BossMod.Autorotation.MiscAI.StayWithinLeylines": [
       {
