@@ -154,7 +154,7 @@ namespace AutoDuty.IPC
             Pkg.Presets_AddTransientStrategy(presetName, moduleTypeName, trackName, value);
 
         /// <summary>
-        /// 全 repo 沒有呼叫點（其餘 <c>*_IPCSubscriber.Dispose()</c> 也一樣），保留以免回退既有介面。
+        /// 由 <see cref="IPCSubscriber_Common.DisposeAllSubscribers"/> 統一呼叫（其餘 <c>*_IPCSubscriber.Dispose()</c> 也一樣）。
         /// 套件實例的 IPC 成員全是訂閱端，而 EzIPC 只對提供端與事件產生 disposal token，
         /// 所以撤掉側車之後這裡本來就沒有東西要拆；全域拆除由 <c>ECommonsMain.Dispose()</c> 負責。
         /// </summary>
@@ -1082,6 +1082,52 @@ namespace AutoDuty.IPC
                 {
                     Svc.Log.Error($"Error while unregistering IPC: {ex}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// 逐一拆掉所有 <c>*_IPCSubscriber</c>。每一步各自 try/catch —— 其中一支擲例外
+        /// 不可以讓後面幾支拆不掉。
+        /// <para>
+        /// 🔴 必須在 <c>ECommonsMain.Dispose()</c> <b>之前</b>呼叫：拆除要用到 Svc 的服務，
+        /// ECommons 收掉之後就沒有東西可以 Unregister 了。
+        /// </para>
+        /// <para>
+        /// 📌 現況下多數 <c>Dispose()</c> 是空操作，這不是漏寫：這些類的 IPC 成員全是
+        /// <b>訂閱端欄位</b>，而 <c>EzIPC.Init</c> 只對提供端與 <c>[EzIPCEvent]</c> 產生
+        /// disposal token（訂閱端欄位不產生）⇒ 它們的 <c>_disposalTokens</c> 是空陣列。
+        /// 真的有動作的是 <c>Wrath_IPCSubscriber</c>（交回 Wrath Combo 的租約），而那一支
+        /// 在 <c>StopAndResetALL()</c> 裡已經先放過一次，這裡是冪等的第二次。
+        /// </para>
+        /// <para>
+        /// 所以接上這條鏈<b>現在不改變任何行為</b>，是為了以後往這些類加提供端或事件時
+        /// 不會靜默漏拆（在此之前這些 <c>Dispose()</c> 全 repo 零呼叫點）。
+        /// </para>
+        /// </summary>
+        internal static void DisposeAllSubscribers()
+        {
+            SafeDispose(nameof(AutoRetainer_IPCSubscriber), AutoRetainer_IPCSubscriber.Dispose);
+            SafeDispose(nameof(AM_IPCSubscriber), AM_IPCSubscriber.Dispose);
+            SafeDispose(nameof(Marketbuddy_IPCSubscriber), Marketbuddy_IPCSubscriber.Dispose);
+            SafeDispose(nameof(DiscardHelper_IPCSubscriber), DiscardHelper_IPCSubscriber.Dispose);
+            SafeDispose(nameof(BossModReborn_IPCSubscriber), BossModReborn_IPCSubscriber.Dispose);
+            SafeDispose(nameof(BossMod_IPCSubscriber), BossMod_IPCSubscriber.Dispose);
+            SafeDispose(nameof(YesAlready_IPCSubscriber), YesAlready_IPCSubscriber.Dispose);
+            SafeDispose(nameof(Gearsetter_IPCSubscriber), Gearsetter_IPCSubscriber.Dispose);
+            SafeDispose(nameof(VNavmesh_IPCSubscriber), VNavmesh_IPCSubscriber.Dispose);
+            SafeDispose(nameof(PandorasBox_IPCSubscriber), PandorasBox_IPCSubscriber.Dispose);
+            SafeDispose(nameof(Wrath_IPCSubscriber), Wrath_IPCSubscriber.Dispose);
+        }
+
+        private static void SafeDispose(string name, Action dispose)
+        {
+            try
+            {
+                dispose();
+            }
+            catch (Exception ex)
+            {
+                Svc.Log.Error($"Error while disposing {name}: {ex}");
             }
         }
     }

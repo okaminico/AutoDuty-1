@@ -22,7 +22,19 @@ namespace AutoDuty.Managers
 
     internal static class ContentPathsManager
     {
-        internal static Dictionary<uint, ContentPathContainer> DictionaryPaths = [];
+        /// <summary>
+        /// 全部路徑檔依領土 ID 分桶的結果。<b>發布之後就不再就地改動</b>:重載時由
+        /// <c>Updater/FileHelper.Update</c> 在區域變數裡建好一份新的,再整份替換掉這個參照。
+        /// </summary>
+        /// <remarks>
+        /// 🔴 <c>volatile</c> 不是裝飾:讀取端有二十來處而且<b>一律不上鎖</b>,其中
+        /// <c>IPC.IPCProvider.ContentHasPath</c> 跑在<b>呼叫端外掛的執行緒</b>上,寫入端則是
+        /// framework 執行緒。整份替換保證讀到的字典內部是完整的,<c>volatile</c> 再保證
+        /// 「看得到新參照」與「看得到那份字典已經建好的內容」這兩件事不會被重排。
+        /// ⚠️ <b>不可以</b>改回就地 <c>Clear()</c>／<c>Add()</c> —— 讀取端會撞見清到一半的字典,
+        /// 失敗形式不是「拿到舊值」而是字典本身壞掉。
+        /// </remarks>
+        internal static volatile Dictionary<uint, ContentPathContainer> DictionaryPaths = [];
 
         private static bool invalidCleanupQueued;
 
