@@ -869,7 +869,10 @@ namespace AutoDuty.Managers
         private unsafe bool InteractableCheck(IGameObject? gameObject)
         {
             if (Conditions.Instance()->Mounted || Conditions.Instance()->RidingPillion)
+            {
+                Svc.Log.Debug("InteractableCheck: giving up, Mounted/RidingPillion");
                 return true;
+            }
 
             if (Player.Available && IsCasting)
                 return false;
@@ -877,18 +880,30 @@ namespace AutoDuty.Managers
             if (GenericHelpers.TryGetAddonByName("SelectYesno", out AtkUnitBase* addonSelectYesno) && GenericHelpers.IsAddonReady(addonSelectYesno) && !AddonHelper.ClickSelectYesno(true))
                 return false;
             else if (AddonHelper.ClickSelectYesno(true))
+            {
+                Svc.Log.Debug("InteractableCheck: giving up, clicked SelectYesno(true)");
                 return true;
+            }
 
             if (GenericHelpers.TryGetAddonByName("SelectString", out AtkUnitBase* addonSelectString) && GenericHelpers.IsAddonReady(addonSelectString))
+            {
+                Svc.Log.Debug("InteractableCheck: giving up, SelectString addon is open");
                 return true;
+            }
 
             if (GenericHelpers.TryGetAddonByName("Talk", out AtkUnitBase* addonTalk) && GenericHelpers.IsAddonReady(addonTalk) && !AddonHelper.ClickTalk())
                 return false;
             else if (AddonHelper.ClickTalk())
+            {
+                Svc.Log.Debug("InteractableCheck: giving up, clicked Talk");
                 return true;
+            }
 
             if (gameObject == null || !IsValid)
+            {
+                Svc.Log.Debug($"InteractableCheck: giving up, gameObject is {(gameObject == null ? "null" : "non-null")}, IsValid={IsValid}");
                 return true;
+            }
 
             // 只快取 DataId 這個純量。傳進來的 gameObject 是呼叫端每幀用 ResolveObject
             // (依 GameObjectId 查表)重解出來的,所以此刻讀它的欄位是安全的;但不能把物件
@@ -903,10 +918,16 @@ namespace AutoDuty.Managers
                 return false;
 
             if (!TryGetObjectByDataId(targetDataId, out var target) || target == null)
+            {
+                Svc.Log.Debug($"InteractableCheck: giving up, no object found for dataId {targetDataId}");
                 return true;
+            }
 
             if (!target.IsTargetable || !target.IsValid())
+            {
+                Svc.Log.Debug($"InteractableCheck: giving up on {target.Name} <{target.GameObjectId:X}> at {target.Position}, IsTargetable={target.IsTargetable}, IsValid={target.IsValid()}");
                 return true;
+            }
 
             if (GetBattleDistanceToPlayer(target) > 2f)
                 MovementHelper.Move(target, 0.25f, 2f, false);
@@ -989,7 +1010,11 @@ namespace AutoDuty.Managers
             // 閉包只捕獲 GameObjectId,每個任務執行時才重查物件表。
             ulong? objectId = null;
             Plugin.Action = $"Interactable";
-            _taskManager.Enqueue(() => Player.Character->InCombat || (objectId = Svc.Objects.Where(x => x.BaseId.EqualsAny(dataIds) && x.IsTargetable).OrderBy(GetDistanceToPlayer).FirstOrDefault()?.GameObjectId) != null, "Interactable-GetGameObjectUnlessInCombat");
+            // 極火龍殲滅戰打完後的個人化剝取物件(每個玩家各自一份、同 DataId 同座標)實測要等
+            // 到快 40 幾秒才會變成 IsTargetable(可能是伺服器依序處理每個玩家的領取)。預設的
+            // 10 秒逾時(TaskManager.TimeLimitMS)遠不夠,逾時後 AbortOnTimeout=false 會直接放
+            // 棄整個互動、跳去下一個路徑動作,材料永遠拿不到。拉長到 90 秒給足餘裕。
+            _taskManager.Enqueue(() => Player.Character->InCombat || (objectId = Svc.Objects.Where(x => x.BaseId.EqualsAny(dataIds) && x.IsTargetable).OrderBy(GetDistanceToPlayer).FirstOrDefault()?.GameObjectId) != null, 90000, "Interactable-GetGameObjectUnlessInCombat");
             _taskManager.Enqueue(() => { Plugin.Action = $"Interactable: {ResolveObject(objectId)?.BaseId}"; }, "Interactable-SetActionVar");
             _taskManager.Enqueue(() =>
             {
@@ -1000,7 +1025,15 @@ namespace AutoDuty.Managers
                     Interactable(action);
                 }
                 else if (objectId == null)
+                {
+                    // 90 秒都沒等到可互動目標,放棄並中止任務鏈——但中止之前一定要把 Action
+                    // 清空,不然它會停在上一行設的 "Interactable: "(objectId 是 null,冒號後面
+                    // 印出來是空的,但字串本身不是空字串)。CheckFinishing 只認 Action 是不是
+                    // 空字串來判斷「這步真的做完了沒」,漏清空的話它會誤以為還在忙,平白多等
+                    // 60 秒(CheckFinishing 自己的逾時保底)才會放棄退本。
+                    Plugin.Action = "";
                     _taskManager.Abort();
+                }
                 }, "Interactable-InCombatCheck");
             _taskManager.Enqueue(() => ResolveObject(objectId)?.IsTargetable ?? true, "Interactable-WaitGameObjectTargetable");
             _taskManager.Enqueue(() => Interactable(objectId), "Interactable-InteractableLoop");
@@ -1040,7 +1073,12 @@ namespace AutoDuty.Managers
 
             _taskManager.Enqueue(() => MovementHelper.Move(gameObjects[index], 0.25f, 1f), "BossLoot-MoveToChest");
             this.Wait(new PathAction() { Arguments = ["250"] });
-            
+
+            // 走到寶箱旁邊不會自動打開它 —— 原本這裡只有移動、從沒呼叫過互動,寶箱永遠
+            // 原封不動。這裡借用既有的 Interactable(ulong?) 走到+互動流程實際把它打開。
+            var chestId = gameObjects[index].GameObjectId;
+            Interactable(chestId);
+
             _taskManager.Enqueue(() =>
             {
                 index++;

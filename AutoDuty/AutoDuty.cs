@@ -35,6 +35,7 @@ using Dalamud.Game.ClientState.Conditions;
 using AutoDuty.Properties;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using AutoDuty.Updater;
 
 namespace AutoDuty;
@@ -1863,7 +1864,15 @@ public sealed class AutoDuty : IDalamudPlugin
         };
     }
 
-    private void CheckFinishing()
+    // CheckFinishing's "wait for Action/path to truly finish" guard (below) has no timeout of its
+    // own - if a post-fight Interactable step gets stuck retrying forever (e.g. the loot task's
+    // own InteractableCheck loop never reaches its exit condition), Action never goes back to
+    // empty and CheckFinishing-WaitAction reschedules itself every 500ms forever, so AutoDuty
+    // never leaves the duty at all. This tracks how long the CURRENT wait streak has been
+    // running so we can give up and exit anyway past a bound, instead of hanging indefinitely.
+    private DateTime? _checkFinishingWaitSince;
+
+    private unsafe void CheckFinishing()
     {
         //we finished lets exit the duty or stop
         var plannerRun = ActiveRunContext?.Source == RunSource.Planner;
@@ -1874,11 +1883,49 @@ public sealed class AutoDuty : IDalamudPlugin
                 (!Configuration.OnlyExitWhenDutyDone || this.DutyState == DutyState.DutyComplete) &&
                 !this.States.HasFlag(PluginState.Navigating))
             {
+                // 骰寶箱(Need/Greed/Pass)視窗還開著就先別退本——就算是靠別的外掛(例如
+                // LazyLoot)自動幫忙骰,也要親自確認那個視窗真的關閉了才算數,不能只憑
+                // Action/路徑這種間接狀態去猜「應該骰完了」。這個等待刻意不受下面 60 秒
+                // 逾時保底影響:骰寶箱是玩家在意、有真實意義的等待,不是卡死的 bug,強制
+                // 跳過反而會在還沒骰完的時候就把大家拉出副本,弄丟稀有素材/坐騎的擲骰機會。
+                if (GenericHelpers.TryGetAddonByName("NeedGreed", out AtkUnitBase* needGreedAddon) && GenericHelpers.IsAddonReady(needGreedAddon))
+                {
+                    SchedulerHelper.ScheduleAction("CheckFinishing-WaitNeedGreed", this.CheckFinishing, 500);
+                    return;
+                }
+
+                // The game can flag DutyCompleted (e.g. boss death) while post-fight path steps
+                // still need to run - carving materials off The Great Hunt's Rathalos is a couple
+                // of Interactable actions after the "Boss" step, not Navigating, so it wasn't
+                // covered by the guard above and used to get yanked out mid-interact.
+                //
+                // Checking only `Action` isn't enough on its own: it gets reset to Stage's own
+                // name every tick (see the Update() line right after DoneNavigating's check,
+                // `Action = Stage.ToCustomString()`), so it can read empty for a single tick right
+                // as Stage transitions between the fight ending and the next path action actually
+                // starting - and DutyCompleted can land exactly in that gap, letting this through
+                // before the walk-to-loot step ever begins. Also require the path itself to have
+                // reached its end (Indexer >= Actions.Count, the same "truly done" check the
+                // Navigating-completion path above already uses) so a still-pending Interactable
+                // step blocks the exit even during that gap.
+                if (!string.IsNullOrEmpty(Action) || (Actions.Count > 0 && Indexer < Actions.Count))
+                {
+                    _checkFinishingWaitSince ??= DateTime.Now;
+                    if (DateTime.Now - _checkFinishingWaitSince.Value < TimeSpan.FromSeconds(60))
+                    {
+                        SchedulerHelper.ScheduleAction("CheckFinishing-WaitAction", this.CheckFinishing, 500);
+                        return;
+                    }
+
+                    Svc.Log.Warning($"CheckFinishing: gave up waiting for Action/path to finish after 60s (Action='{Action}', Indexer={Indexer}/{Actions.Count}) - exiting duty anyway so this doesn't hang forever.");
+                }
+
+                _checkFinishingWaitSince = null;
                 if (ExitDutyHelper.State != ActionState.Running)
                     ExitDuty();
                 if (Configuration.AutoManageRotationPluginState && !Configuration.UsingAlternativeRotationPlugin)
                     SetRotationPluginSettings(false);
-                if (Configuration.AutoManageBossModAISettings) 
+                if (Configuration.AutoManageBossModAISettings)
                     BossMod_IPCSubscriber.DisablePresets();
             }
         }

@@ -20,7 +20,12 @@ namespace AutoDuty.Helpers
 
     internal static class ObjectHelper
     {
-        internal static bool TryGetObjectByDataId(uint dataId, out IGameObject? gameObject) => (gameObject = Svc.Objects.OrderBy(GetDistanceToPlayer).FirstOrDefault(x => x.BaseId == dataId)) != null;
+        // 某些內容(例如極火龍殲滅戰打完後的剝取素材)同一個 DataId 會同時存在好幾份、
+        // 位置完全相同的個體物件(每個玩家各自一份自己專屬的可互動物件),距離排序完全
+        // 排不出差異、等於隨機挑。挑到別人那份就會一直 IsTargetable == false,互動永遠
+        // 卡住。優先挑「當下真的可互動」的那份,挑不到才照舊退回最近的(給尚未刷出/尚未
+        // 可互動時的移動目標用)。
+        internal static bool TryGetObjectByDataId(uint dataId, out IGameObject? gameObject) => (gameObject = Svc.Objects.Where(x => x.BaseId == dataId).OrderByDescending(x => x.IsTargetable).ThenBy(GetDistanceToPlayer).FirstOrDefault()) != null;
 
         // ⚠️ 不要把 IGameObject 捕獲進 TaskManager 的閉包跨幀用。
         // Dalamud 的 GameObject.Address 在建構時就凍結、永不重新解析
@@ -31,11 +36,11 @@ namespace AutoDuty.Helpers
         // 查不到就中止該行為(fail-closed)。
         internal static bool TryGetObjectIdByDataId(uint dataId, out ulong? objectId)
         {
-            objectId = Svc.Objects.OrderBy(GetDistanceToPlayer).FirstOrDefault(x => x.BaseId == dataId)?.GameObjectId;
+            objectId = Svc.Objects.Where(x => x.BaseId == dataId).OrderByDescending(x => x.IsTargetable).ThenBy(GetDistanceToPlayer).FirstOrDefault()?.GameObjectId;
             return objectId != null;
         }
 
-        internal static ulong? GetObjectIdByDataId(uint id) => Svc.Objects.OrderBy(GetDistanceToPlayer).FirstOrDefault(o => o.BaseId == id)?.GameObjectId;
+        internal static ulong? GetObjectIdByDataId(uint id) => Svc.Objects.Where(o => o.BaseId == id).OrderByDescending(o => o.IsTargetable).ThenBy(GetDistanceToPlayer).FirstOrDefault()?.GameObjectId;
 
         internal static IGameObject? ResolveObject(ulong? objectId) => objectId is null ? null : Svc.Objects.SearchById(objectId.Value);
 
