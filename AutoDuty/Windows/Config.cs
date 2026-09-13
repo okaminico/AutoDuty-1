@@ -513,6 +513,13 @@ public class Configuration
     public   bool AutoExitDuty                  = true;
     public   bool OnlyExitWhenDutyDone          = false;
     public   bool AutoManageRotationPluginState = true;
+    /// <summary>
+    /// 強制只用 BossMod AutoRotation,不管有沒有裝 WrathCombo／RotationSolver。
+    /// 理由:WrathCombo/RSR 完全不讀 BossMod 模組自己算的 AIHints.Priority
+    /// (例如黃金谷、Batraal 那類需要優先打特定 add 的王），永遠不會主動去打；
+    /// 只有 BossMod 自己的 AutoRotation 會照這個 Priority 選目標。
+    /// </summary>
+    public   bool ForceBossModAutoRotation      = false;
     internal bool autoManageBossModAISettings   = true;
     public bool AutoManageBossModAISettings
     {
@@ -1725,6 +1732,14 @@ public static class ConfigTab
             if (ImGui.Checkbox("Auto Manage Rotation Plugin State".Loc(), ref Configuration.AutoManageRotationPluginState))
                 Configuration.Save();
             ImGuiComponents.HelpMarker("Autoduty will enable the Rotation Plugin at the start of each duty\n*Only if using Wrath Combo, Rotation Solver or BossMod AutoRotation\n**AutoDuty will try to use them in that order".Loc());
+
+            if (Configuration.AutoManageRotationPluginState)
+            {
+                if (ImGui.Checkbox("強制只用 BossMod AutoRotation".Loc(), ref Configuration.ForceBossModAutoRotation))
+                    Configuration.Save();
+                ImGuiComponents.HelpMarker("即使有裝 WrathCombo 或 RotationSolver 也一律跳過，強制使用 BossMod 自己的 AutoRotation。\n" +
+                                            "WrathCombo／RotationSolver 完全不會讀取王的模組自己設定的優先目標（例如某些王身邊需要優先打的 add），永遠不會主動去打；只有 BossMod 自己的 AutoRotation 會照這個優先度選目標。".Loc());
+            }
 
             ImGui.Separator();
             ImGui.AlignTextToFramePadding();

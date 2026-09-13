@@ -2037,24 +2037,31 @@ public sealed class AutoDuty : IDalamudPlugin
         bool bmEnabled     = BossMod_IPCSubscriber.IsEnabled;
         bool foundRotation = false;
 
+        // 強制只用 BossMod AutoRotation:不能只是跳過偵測——Wrath/RSR 若原本已經在
+        // Auto 狀態，不主動關掉的話會跟 BossMod 的 AutoRotation 搶著放技能。所以這裡是
+        // 把「要不要真的開 Wrath」這件事跟 ForceBossModAutoRotation 掛鉤，該關的時候一樣
+        // 會呼叫 SetAutoMode(false)，只是永遠不會被視為「找到可用的循環外掛」
+        // (foundRotation 不會被設成 true)，讓下面 bmEnabled 那段走「!foundRotation」
+        // 分支，套用會讀 AIHints.Priority 的 "AutoDuty" preset。
         if (Wrath_IPCSubscriber.IsEnabled)
         {
+            bool wrathOn = on && !this.Configuration.ForceBossModAutoRotation;
             bool wrathRotationReady = true;
-            if (on)
+            if (wrathOn)
                 wrathRotationReady = Wrath_IPCSubscriber.IsCurrentJobAutoRotationReady() ||
                                      this.Configuration.Wrath_AutoSetupJobs && Wrath_IPCSubscriber.SetJobAutoReady();
 
-            if (!on || wrathRotationReady)
+            if (!wrathOn || wrathRotationReady)
             {
-                Svc.Log.Debug("Wrath rotation enabled");
-                Wrath_IPCSubscriber.SetAutoMode(on);
-                foundRotation = true;
+                Svc.Log.Debug(wrathOn ? "Wrath rotation enabled" : "Wrath rotation disabled");
+                Wrath_IPCSubscriber.SetAutoMode(wrathOn);
+                foundRotation = foundRotation || wrathOn;
             }
         }
 
         if (ReflectionHelper.RotationSolver_Reflection.RotationSolverEnabled)
         {
-            if (on && !foundRotation)
+            if (on && !foundRotation && !this.Configuration.ForceBossModAutoRotation)
             {
                 Svc.Log.Debug("RSR enabled");
                 if (ReflectionHelper.RotationSolver_Reflection.GetStateType != ReflectionHelper.RotationSolver_Reflection.StateTypeEnum.Auto)
