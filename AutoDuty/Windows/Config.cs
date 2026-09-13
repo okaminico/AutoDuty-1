@@ -1737,8 +1737,8 @@ public static class ConfigTab
             {
                 if (ImGui.Checkbox("強制只用 BossMod AutoRotation".Loc(), ref Configuration.ForceBossModAutoRotation))
                     Configuration.Save();
-                ImGuiComponents.HelpMarker("即使有裝 WrathCombo 或 RotationSolver 也一律跳過，強制使用 BossMod 自己的 AutoRotation。\n" +
-                                            "WrathCombo／RotationSolver 完全不會讀取王的模組自己設定的優先目標（例如某些王身邊需要優先打的 add），永遠不會主動去打；只有 BossMod 自己的 AutoRotation 會照這個優先度選目標。".Loc());
+                ImGuiComponents.HelpMarker("開啟後：不管有沒有裝 WrathCombo 或 RotationSolver，戰鬥輸出一律改用 BossMod 自己的 AutoRotation，原本裝的循環外掛會被主動關掉。\n\n" +
+                                            "為什麼要開：有些王會標記某個敵人是「要優先打」的目標（例如需要優先擊殺、否則會造成團滅的 add）。這個優先度資訊只存在 BossMod 的王模組裡，只有 BossMod 自己的 AutoRotation 讀得到——WrathCombo、RotationSolver 完全不知道這件事，永遠只會照自己的選怪邏輯（例如打體型最大或血量最高的）打，不會主動去打那個 add。".Loc());
             }
 
             ImGui.Separator();
