@@ -104,12 +104,12 @@ namespace AutoDuty.Helpers
 
             if (Plugin.Indexer != -1)
             {
-                // 防禦性寫法,理由跟 ContentPathContainerExtensions 那邊的空容器問題同一類:
-                // 死亡重生的當下,CurrentTerritoryType 可能不在 DictionaryPaths 裡(例如這個
-                // 副本本來就沒有路徑資料),或 CurrentPath 指到一個已經不存在/被移除的路徑
-                // (index 越界或是 -1)。原本的寫法是直接用索引子連續兩層存取,兩種情況都會讓
-                // 例外一路逃出 OnRevive,導致 Stop() 永遠執行不到、Framework.Update 訂閱解不掉,
-                // 每一幀都重丟例外洗版。查不到就當作「沒有重生點資料」處理,不要整個掛掉。
+                // 🔴 防禦性查表，理由跟 PathSelectionHelper 那邊的空容器問題同一類：死亡重生的
+                //    當下，CurrentTerritoryType 可能不在 DictionaryPaths 裡（這個副本本來就沒有
+                //    路徑資料），或 CurrentPath 指到一個已經不存在／被移除的路徑（越界或 -1）。
+                //    原本是連續兩層索引子直接存取，兩種情況都會擲例外並一路逃出 OnRevive；
+                //    而 OnRevive 是 Framework.Update 的 handler，例外會讓後面的 Stop() 永遠執行不到、
+                //    訂閱解不掉，之後每一幀重丟一次例外洗版。查不到就當作「沒有復生點資料」處理。
                 bool revivalFound = false;
                 if (ContentPathsManager.DictionaryPaths.TryGetValue(Plugin.CurrentTerritoryType, out ContentPathsManager.ContentPathContainer? container)
                     && Plugin.CurrentPath >= 0 && Plugin.CurrentPath < container.Paths.Count)
@@ -118,7 +118,8 @@ namespace AutoDuty.Helpers
                 }
                 else
                 {
-                    Svc.Log.Warning($"DeathHelper - Couldn't look up RevivalFound for TerritoryType {Plugin.CurrentTerritoryType}, path index {Plugin.CurrentPath} - assuming no revival point.");
+                    Svc.Log.Information($"[DeathHelper] 查不到 TerritoryType {Plugin.CurrentTerritoryType}、路徑索引 {Plugin.CurrentPath} 的 RevivalFound，" +
+                                        "當作沒有復生點處理。");
                 }
 
                 bool isBoss = Plugin.Actions[Plugin.Indexer].Name.Equals("Boss");

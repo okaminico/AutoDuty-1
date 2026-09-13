@@ -1018,10 +1018,10 @@ namespace AutoDuty.Managers
             // 閉包只捕獲 GameObjectId,每個任務執行時才重查物件表。
             ulong? objectId = null;
             Plugin.Action = $"Interactable";
-            // 極火龍殲滅戰打完後的個人化剝取物件(每個玩家各自一份、同 DataId 同座標)實測要等
-            // 到快 40 幾秒才會變成 IsTargetable(可能是伺服器依序處理每個玩家的領取)。預設的
-            // 10 秒逾時(TaskManager.TimeLimitMS)遠不夠,逾時後 AbortOnTimeout=false 會直接放
-            // 棄整個互動、跳去下一個路徑動作,材料永遠拿不到。拉長到 90 秒給足餘裕。
+            // 極火龍殲滅戰打完後的個人化剝取物件（每個玩家各自一份、同 DataId 同座標）實測要等到
+            // 快 40 幾秒才會變成 IsTargetable（推測是伺服器依序處理每個玩家的領取）。TaskManager 的
+            // 預設逾時只有 10 秒（TimeLimitMS），而 AutoDuty 的實例是 AbortOnTimeout=false ⇒ 逾時會
+            // 直接放行往下跑、objectId 還是 null，接著整個互動被放棄，材料永遠拿不到。拉長到 90 秒。
             _taskManager.Enqueue(() => Player.Character->InCombat || (objectId = Svc.Objects.Where(x => x.BaseId.EqualsAny(dataIds) && x.IsTargetable).OrderBy(GetDistanceToPlayer).FirstOrDefault()?.GameObjectId) != null, 90000, "Interactable-GetGameObjectUnlessInCombat");
             _taskManager.Enqueue(() => { Plugin.Action = $"Interactable: {ResolveObject(objectId)?.BaseId}"; }, "Interactable-SetActionVar");
             _taskManager.Enqueue(() =>
@@ -1034,11 +1034,10 @@ namespace AutoDuty.Managers
                 }
                 else if (objectId == null)
                 {
-                    // 90 秒都沒等到可互動目標,放棄並中止任務鏈——但中止之前一定要把 Action
-                    // 清空,不然它會停在上一行設的 "Interactable: "(objectId 是 null,冒號後面
-                    // 印出來是空的,但字串本身不是空字串)。CheckFinishing 只認 Action 是不是
-                    // 空字串來判斷「這步真的做完了沒」,漏清空的話它會誤以為還在忙,平白多等
-                    // 60 秒(CheckFinishing 自己的逾時保底)才會放棄退本。
+                    // 等不到可互動目標，放棄並中止任務鏈 —— 但中止之前一定要把 Action 清空，
+                    // 不然它會停在上一行設的 "Interactable: "（objectId 是 null，冒號後面印出來是空的，
+                    // 但字串本身不是空字串）。CheckFinishing 只認 Action 是不是空字串來判斷「這步
+                    // 真的做完了沒」，漏清空的話它會誤以為還在忙，平白多等一輪逃生口的時間才退本。
                     Plugin.Action = "";
                     _taskManager.Abort();
                 }

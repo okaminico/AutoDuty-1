@@ -20,11 +20,11 @@ namespace AutoDuty.Helpers
 
     internal static class ObjectHelper
     {
-        // 某些內容(例如極火龍殲滅戰打完後的剝取素材)同一個 DataId 會同時存在好幾份、
-        // 位置完全相同的個體物件(每個玩家各自一份自己專屬的可互動物件),距離排序完全
-        // 排不出差異、等於隨機挑。挑到別人那份就會一直 IsTargetable == false,互動永遠
-        // 卡住。優先挑「當下真的可互動」的那份,挑不到才照舊退回最近的(給尚未刷出/尚未
-        // 可互動時的移動目標用)。
+        // 某些內容（例如極火龍殲滅戰打完後的剝取素材）同一個 DataId 會同時存在好幾份、
+        // 座標完全相同的個體物件（每個玩家各自一份自己專屬的可互動物件），距離排序完全排不出
+        // 差異、等於隨機挑。挑到別人那份就會一直 IsTargetable == false，互動永遠卡住。
+        // 優先挑「當下真的可互動」的那份，挑不到才照舊退回最近的（給尚未刷出／尚未可互動時的
+        // 移動目標用）。
         internal static bool TryGetObjectByDataId(uint dataId, out IGameObject? gameObject) => (gameObject = Svc.Objects.Where(x => x.BaseId == dataId).OrderByDescending(x => x.IsTargetable).ThenBy(GetDistanceToPlayer).FirstOrDefault()) != null;
 
         // ⚠️ 不要把 IGameObject 捕獲進 TaskManager 的閉包跨幀用。
