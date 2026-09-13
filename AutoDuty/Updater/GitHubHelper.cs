@@ -28,10 +28,12 @@ namespace AutoDuty.Updater
         /// 也就是說 <b>這個常數決定了使用者實際跑的是誰的路徑資料</b>。
         /// </para>
         /// <para>
-        /// 指向本 fork 的 tc-7.20,而不是原上游 ffxivcode/AutoDuty(已於 2026-01 封存)。
+        /// 指向 okaminico/AutoDuty-1 的 tw-fix(myfork),而不是 ffxiv-tc-port/AutoDuty 的
+        /// tc-7.20(origin)——tw-fix 定期合併 origin/tc-7.20,並額外帶有尚未回饋上游的
+        /// 本地路徑修正(例如黃金谷 StopForCombat 拖怪修正)。
         /// </para>
         /// </summary>
-        internal const string PathRepoBaseUrl = "https://raw.githubusercontent.com/ffxiv-tc-port/AutoDuty/refs/heads/tc-7.20/";
+        internal const string PathRepoBaseUrl = "https://raw.githubusercontent.com/okaminico/AutoDuty-1/refs/heads/tw-fix/";
 
         private static readonly SocketsHttpHandler _handler = new() { AutomaticDecompression = DecompressionMethods.All, ConnectCallback = new HappyEyeballsCallback().ConnectCallback };
 
