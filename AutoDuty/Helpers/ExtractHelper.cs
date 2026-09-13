@@ -137,7 +137,16 @@ namespace AutoDuty.Helpers
                     }
 
                     // 讀到 U+FFFD ＝ 視窗記憶體正在變動,這一幀不碰:既不按也不切分類(切分類是不可逆的狀態推進)。
-                    string spiritbondValue = spiritbondTextNode->NodeText.ToString();
+                    // 🔴 ToString() 就是 Encoding.UTF8.GetString(AsSpan())，不剝 SeString payload
+                    //    ⇒ 含 payload 的文字必定解出 U+FFFD ⇒ 下面那道守衛永遠成立、精製永遠不動作。
+                    //    GetText() 底下是 MemoryHelper.ReadSeString，只保留 TextPayload。
+                    // ⚠️ StringPtr 為 null 而 Length 還留著殘值時，AsSpan() 會建出長度非零、
+                    //    指向位址 0 的 Span ⇒ 攔不到的存取違規。判空後比照守衛擋下處理：這一幀
+                    //    什麼都不做，**不可以**往下走 else 去 _currentCategory++（那是不可逆的推進）。
+                    if (!spiritbondTextNode->NodeText.StringPtr.HasValue)
+                        return;
+
+                    string spiritbondValue = spiritbondTextNode->NodeText.GetText();
                     if (AddonPressGuard.IsTextCorrupt("Materialize", spiritbondValue))
                         return;
 

@@ -607,7 +607,45 @@ namespace AutoDuty.IPC
         // SafeWrapper 也同為 IPCException,對提供端沒有任何差別。
         internal static Task<List<Vector3>> Nav_Pathfind(Vector3 from, Vector3 to, bool fly) => Pkg.Pathfind(from, to, fly);
         internal static void Path_MoveTo(List<Vector3> waypoints, bool fly) => Pkg.MoveTo(waypoints, fly);
-        internal static bool SimpleMove_PathfindAndMoveTo(Vector3 position, bool canFly) => Pkg.PathfindAndMoveTo(position, canFly);
+        /// <summary>
+        /// 算路徑並開始移動。<b>vnavmesh 那一側自己擲例外時回 <see langword="false"/></b>。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// 🔴 <b>vnavmesh 的這支端點會擲例外，而 <c>SafeWrapper.IPCException</c> 攔不到它。</b>
+        /// <c>NavmeshManager.QueryPath</c> 在 <c>_currentCTS</c> 為 null 時直接擲一個普通的
+        /// <c>Exception</c>（訊息 <c>Can't initiate query - navmesh is not loaded</c>）——
+        /// 那個狀態在「切圖／讀取畫面期間導航網格被卸掉」與「使用者關掉 vnavmesh 的自動載入」時都成立。
+        /// Dalamud 的 <c>CallGateChannel.InvokeFunc</c> 是用 <c>Delegate.DynamicInvoke</c> 呼叫提供端的，
+        /// 所以提供端擲出的東西一律被包成 <see cref="System.Reflection.TargetInvocationException"/>，
+        /// 而它<b>不是</b> <c>IpcError</c> 的子型別 ⇒ 本類用的 <c>SafeWrapper.IPCException</c>
+        /// （只攔 <c>IpcNotReadyError</c>）一個都攔不到。
+        /// </para>
+        /// <para>
+        /// 補這一層之前，例外會直接逃進呼叫端。三個呼叫點裡只有 <c>MovementHelper</c> 先問過
+        /// <c>Nav_IsReady()</c>；<c>AutoDuty.StageReadingPath</c>（而 <c>Framework_Update</c> 上
+        /// 沒有 try/catch）與 <c>ActionsManager</c> 的 <c>KillInRange-Main</c> 任務都沒有，
+        /// 表現出來是「副本跑到一半不動了、每幀噴一次例外」。
+        /// </para>
+        /// <para>
+        /// 🔴 刻意<b>只</b>攔 <see cref="System.Reflection.TargetInvocationException"/>，不是裸
+        /// <c>catch (Exception)</c> —— 本外掛自己這一側的程式錯誤（<c>NullReferenceException</c> 之類）
+        /// 不會被包成這個型別，照樣往上冒。<c>IpcNotReadyError</c> 的處置也一個字都沒改
+        /// （仍由 <c>SafeWrapper.IPCException</c> 吞掉並回 <see langword="false"/>）。
+        /// </para>
+        /// </remarks>
+        internal static bool SimpleMove_PathfindAndMoveTo(Vector3 position, bool canFly)
+        {
+            try
+            {
+                return Pkg.PathfindAndMoveTo(position, canFly);
+            }
+            catch (System.Reflection.TargetInvocationException ex)
+            {
+                IPCSubscriber_Common.ReportProviderFault("vnavmesh", "SimpleMove.PathfindAndMoveTo", ex);
+                return false;
+            }
+        }
 
         // ── 以下走側車，理由見 IPCSubscriberSidecar.cs ──
         internal static Task<List<Vector3>> Nav_PathfindCancelable(Vector3 from, Vector3 to, bool fly, CancellationToken token) => VNavmeshExtraIPC.Nav_PathfindCancelable(from, to, fly, token);
@@ -1069,6 +1107,52 @@ namespace AutoDuty.IPC
         }
 
         internal static Version Version(string pluginName) => DalamudReflector.TryGetDalamudPlugin(pluginName, out var dalamudPlugin, false, true) ? dalamudPlugin.GetType().Assembly.GetName().Version : new Version(0, 0, 0, 0);
+
+        /// <summary>同一個端點的故障訊息重印間隔（毫秒）。</summary>
+        private const long ProviderFaultLogIntervalMs = 10000;
+
+        /// <summary>節流表上限，避免端點名意外發散時無限成長。</summary>
+        private const int MaxTrackedFaultKeys = 64;
+
+        private static readonly Dictionary<string, long> ProviderFaultLogTimes = new Dictionary<string, long>();
+
+        /// <summary>
+        /// 提供端的端點實作自己擲了例外（被 <c>Delegate.DynamicInvoke</c> 包成
+        /// <see cref="System.Reflection.TargetInvocationException"/>）—— 寫一行給使用者看的說明。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// 🔴 寫 <c>Information</c>：這是要使用者回報的診斷。使用者的 <c>LogLevel</c> 是 1，
+        /// <c>Debug</c> 其實收得到，但實機 log 單檔有數十萬行 <c>Debug</c>，寫那一級會被淹沒。
+        /// </para>
+        /// <para>
+        /// 🔴 自帶節流字典而不是用 <c>EzThrottler</c>：後者是整個外掛共用的靜態 <c>Dictionary</c>
+        /// 且零同步，並行插入弄壞的是整張表 —— 連帶弄壞外掛裡所有模組的節流。
+        /// 鎖內只碰字典，不寫 log、不做 I/O、不呼叫別的外掛。
+        /// </para>
+        /// </remarks>
+        internal static void ReportProviderFault(string pluginName, string endpoint, Exception ex)
+        {
+            if (!ShouldLogProviderFault(endpoint))
+                return;
+
+            Exception inner = ex.InnerException ?? ex;
+            Svc.Log.Information($"[IPC] {pluginName} 的「{endpoint}」端點自己擲了例外，這一次當成「沒有開始」處理：{inner.GetType().Name}: {inner.Message}。這通常代表對方那一側現在做不到這件事（例如導航網格還沒載入）；持續出現請連同這一行回報。");
+        }
+
+        private static bool ShouldLogProviderFault(string key)
+        {
+            long now = Environment.TickCount64;
+            lock (ProviderFaultLogTimes)
+            {
+                if (ProviderFaultLogTimes.TryGetValue(key, out long last) && now - last < ProviderFaultLogIntervalMs)
+                    return false;
+                if (ProviderFaultLogTimes.Count >= MaxTrackedFaultKeys && !ProviderFaultLogTimes.ContainsKey(key))
+                    ProviderFaultLogTimes.Clear();
+                ProviderFaultLogTimes[key] = now;
+                return true;
+            }
+        }
 
         internal static void DisposeAll(EzIPCDisposalToken[] _disposalTokens)
         {

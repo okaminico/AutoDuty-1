@@ -1,4 +1,5 @@
-﻿using Dalamud.Plugin.Services;
+﻿using Dalamud.Memory;
+using Dalamud.Plugin.Services;
 using ECommons;
 using ECommons.DalamudServices;
 using ECommons.Throttlers;
@@ -13,6 +14,7 @@ using System.Linq;
 namespace AutoDuty.Helpers
 {
     using System;
+    using AtkValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
     using global::AutoDuty.Multibox;
     using static Data.Classes;
 
@@ -242,7 +244,62 @@ namespace AutoDuty.Helpers
             if (textNode == null || textNode->AtkResNode.Type != NodeType.Text)
                 return "?";
 
-            return textNode->NodeText.ToString().Replace("...", "");
+            // 🔴 ToString() 不剝 SeString payload：副本名裡的 payload 會解出 U+FFFD 或雜字元，
+            //    讓這行診斷訊息看起來像記憶體壞掉。改走 GetText()（MemoryHelper.ReadSeString
+            //    → 只保留 TextPayload）。這站不餵守衛，所以原本只是髒 log、不會讓功能停擺。
+            // ⚠️ StringPtr 判空不能省（AsSpan() 會建出長度非零、指向位址 0 的 Span）；
+            //    取不到就回 "?"，與本方法既有的「不知道」慣例一致。
+            if (!textNode->NodeText.StringPtr.HasValue)
+                return "?";
+
+            return textNode->NodeText.GetText().Replace("...", "");
+        }
+
+        /// <summary>
+        /// 讀 <see cref="AtkValue"/> 的字串值,並把 SeString 控制序列攤成畫面上看得到的文字。
+        /// </summary>
+        /// <remarks>
+        /// 🔴 原本這裡走的是 <c>GetValueAsString()</c>(底層是 <c>CStringPointer.ToString()</c>,
+        /// 把整段位元組當 UTF-8 硬解、完全不剝 payload),再用三個 <c>Replace</c> 把已知的控制序列敲掉:
+        /// <c>02 1A 02 02 03</c> 與 <c>02 1A 02 01 03</c>(斜體開／關)換成空字串、
+        /// <c>02 1F 01 03</c>(SeHyphen)換成 U+2013 破折號。
+        /// <b>那三個 Replace 是承重的</b> —— 後面 <c>selectedDutyName != _content.Name</c>
+        /// 的比對要靠它們才對得上。
+        /// <para>
+        /// ⚠️ 所以這裡<b>不能</b>換成 ECommons 的 <c>GetText()</c>:那支只收 <c>TextPayload</c>
+        /// (外加一個 <c>02 1D 01 03</c> 的特例),會把 SeHyphen 整個丟掉 ⇒ 比對恆假 ⇒
+        /// 排隊助手會不停對 ContentsFinder 送 (true, 12, 1) 清掉使用者的選取。
+        /// 改成真的解析 SeString(<see cref="SeStringTextExtractor.ExtractDisplayText"/>)之後,
+        /// 對「純文字／斜體開關／SeHyphen」三種形狀的輸出與原本的 Replace 鏈逐字相同,
+        /// 而且其餘 payload(圖示、顏色、自動翻譯…)也一併不會再漏進比對字串裡。
+        /// </para>
+        /// <para>
+        /// 📌 只有 <c>String</c>／<c>ManagedString</c>／<c>String8</c> 這三種型別的 union 欄位
+        /// 是「UTF-8 位元組指標」,才可能夾帶 payload;其餘型別(Int／Bool／Float／WideString…)
+        /// 一律沿用 <c>GetValueAsString()</c>,行為與改動前逐字相同。
+        /// </para>
+        /// <para>
+        /// ⚠️ 守衛 <c>IsTextCorrupt</c> 仍然有效:真正的記憶體變動會讓 <c>TextPayload</c> 的
+        /// <c>Encoding.UTF8.GetString</c> 走 replacement fallback 解出 U+FFFD。
+        /// </para>
+        /// </remarks>
+        private static string ReadAtkValueDisplayText(AtkValue* value)
+        {
+            if (value == null)
+                return string.Empty;
+
+            AtkValueType type = value->Type;
+            if (type != AtkValueType.String && type != AtkValueType.ManagedString && type != AtkValueType.String8)
+                return value->GetValueAsString();
+
+            // 🔴 指標判空不能省:Type 說是字串不代表 union 欄位有值,而 SeString 解析會從那個位址
+            //    一路讀到 0 為止。GetValueAsString() 這一路是靠 CreateReadOnlySpanFromNullTerminated
+            //    對 null 回空 Span 才安全,這裡自己解位址所以要自己擋。
+            if (!value->String.HasValue)
+                return string.Empty;
+
+            return SeStringTextExtractor.ExtractDisplayText(
+                MemoryHelper.ReadSeStringNullTerminated((nint)value->String.Value));
         }
 
         private void QueueRegular()
@@ -314,7 +371,7 @@ namespace AutoDuty.Helpers
             // 取不到時視為「目前沒有選取任何副本」,走既有的 SelectDuty 分支(與原本空字串的行為一致)。
             var selectedDutyName = string.Empty;
             if (_addonContentsFinder->AtkValues != null && _addonContentsFinder->AtkValuesCount > 18)
-                selectedDutyName = _addonContentsFinder->AtkValues[18].GetValueAsString().Replace("\u0002\u001a\u0002\u0002\u0003", string.Empty).Replace("\u0002\u001a\u0002\u0001\u0003", string.Empty).Replace("\u0002\u001f\u0001\u0003", "\u2013");
+                selectedDutyName = ReadAtkValueDisplayText(_addonContentsFinder->AtkValues + 18);
             // 讀到 U+FFFD ＝ ContentsFinder 的記憶體正在變動(關閉中或重繪中),這一幀不碰:
             // 亂碼必定不等於 _content.Name 又不是空字串,原本會直接對它送 (true, 12, 1) 把選取清掉。
             // 正常(文字完整)路徑一行都沒動;250 毫秒節流放行後下一輪再讀一次。

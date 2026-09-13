@@ -389,6 +389,18 @@ public static class MultiboxUtility
 
                             clients[index] = new ClientInfo(cid, split[2], wid);
 
+                            // 🔴🔴 卸載期旁路:同上 —— 無延遲的 RunOnTick 在
+                            //    IsFrameworkUnloading 為真時會就地在呼叫端執行緒執行。
+                            //    ConnectionHandler 是 async void,從 Task.Run 進來且每圈
+                            //    await Task.Delay(100) ⇒ 這裡一定是執行緒池的執行緒。
+                            //    委派裡有 PartyHelper.IsPartyMember、Player.CurrentWorldId、
+                            //    InfoProxyPartyInvite.Instance()->InviteToParty(...) —— 全是
+                            //    原生記憶體存取,卸載期正是那些結構被拆掉的時候。
+                            //    🔑 跳過等同於「這次沒送出邀請」,對端本來就要能處理
+                            //    「邀請沒來」(它只是等不到 PARTY_INVITE)。
+                            if (SkipDuringFrameworkUnload("送出組隊邀請"))
+                                break;
+
                             _ = Svc.Framework.RunOnTick(() =>
                                                         {
                                                             unsafe
@@ -648,7 +660,19 @@ public static class MultiboxUtility
                 {
                     clientSS.WriteString(CLIENT_AUTH_KEY);
 
-                    _ = Svc.Framework.RunOnTick(() =>
+                    // 🔴🔴 卸載期旁路:無延遲的 RunOnTick 在 Framework.IsFrameworkUnloading
+                    //    為真時不是排隊,而是直接轉呼叫 RunOnFrameworkThread,而後者在
+                    //    IsInFrameworkUpdateThread || IsFrameworkUnloading 時「就地在呼叫端
+                    //    執行緒執行」(本 pin Dalamud/Game/Framework.cs)。這一整支是
+                    //    async void,await ConnectToServerAsync 之後跑在執行緒池的執行緒上
+                    //    ⇒ 關遊戲那一瞬間委派會在那條執行緒上讀 Player.CID／Player.Name／
+                    //    Player.CurrentWorldId,也就是對 IObjectTable 每格重用、Address 就地
+                    //    改寫的共用包裝解參考。失敗形式是 AccessViolationException,
+                    //    而那在 .NET Core 是 corrupted-state exception,try/catch 攔不到。
+                    //    🔑 卸載期直接跳過:沒送出識別等同於「這次沒接上多開」,
+                    //    而多開本來就會在外掛卸載時整組收掉。
+                    if (!SkipDuringFrameworkUnload("送出本機角色識別"))
+                        _ = Svc.Framework.RunOnTick(() =>
                                                 {
                                                     if (Player.CID != 0)
                                                         clientSS.WriteString($"{CLIENT_CID_KEY}|{Player.CID}|{Player.Name}|{Player.CurrentWorldId}");
@@ -809,6 +833,61 @@ public static class MultiboxUtility
 
             clientSS.WriteString(dead ? DEATH_KEY : UNDEATH_KEY);
             DebugLog("Death sent to server.");
+        }
+    }
+
+    /// <summary>同一則卸載期訊息的重印間隔(毫秒)。</summary>
+    private const long UnloadLogIntervalMs = 10000;
+
+    /// <summary>節流表上限,避免鍵意外發散時無限成長。</summary>
+    private const int MaxTrackedUnloadKeys = 32;
+
+    private static readonly Dictionary<string, long> UnloadLogTimes = [];
+
+    /// <summary>
+    /// 判斷「現在是不是 Dalamud 卸載期,而且我不在 framework 執行緒上」。
+    /// 為真時呼叫端應該直接放棄這次要排給 framework 執行緒的工作。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 為什麼需要:<c>Svc.Framework.RunOnTick</c>(無 delay／delayTicks)與
+    /// <c>RunOnFrameworkThread</c> 在 <c>IsFrameworkUnloading</c> 為真時<b>就地在呼叫端的
+    /// 執行緒上執行</b>委派(本 pin <c>Dalamud/Game/Framework.cs</c>)——
+    /// 也就是說「丟回 framework 執行緒再讀原生狀態」這層保護,在關遊戲／停用外掛那一
+    /// 瞬間整個失效。AccessViolationException 在 .NET Core 是 corrupted-state exception,
+    /// <c>try</c>/<c>catch</c> 與 <c>HookSafety.ExecuteSafe</c> 都攔不到,使用者看到的是遊戲直接關掉。
+    /// <br/><br/>
+    /// 📌 <b>已經在 framework 執行緒上時一律回 false</b>(那本來就是安全的執行緒),
+    /// 所以非卸載期的行為與改動前逐字相同。
+    /// <br/><br/>
+    /// 🔴 節流刻意<b>不用</b> <c>EzThrottler</c>:那是整個外掛共用的靜態 <c>Dictionary</c> 且零同步,
+    /// 而這條路徑跑在連線執行緒上,並行插入弄壞的是整張表 —— 連帶弄壞外掛裡所有模組的節流。
+    /// 所以自帶字典＋自己的鎖,而且<b>鎖內只碰字典</b>:不寫 log、不做 I/O。
+    /// <br/><br/>
+    /// 📌 診斷寫 Information:使用者跑 LogLevel 1,這一級一定收得到,又不會被 Debug 的數十萬行淹沒。
+    /// </remarks>
+    private static bool SkipDuringFrameworkUnload(string what)
+    {
+        if (!Svc.Framework.IsFrameworkUnloading || Svc.Framework.IsInFrameworkUpdateThread)
+            return false;
+
+        if (ShouldLogUnload(what))
+            Svc.Log.Information($"[Multibox] Dalamud 正在卸載,已跳過「{what}」。卸載期的 RunOnTick 會就地在呼叫端的執行緒上執行,保護不了原生記憶體存取;此時多開功能失效可以接受,遊戲崩潰不行。");
+
+        return true;
+    }
+
+    /// <summary>首次必放行,之後每 <see cref="UnloadLogIntervalMs"/> 毫秒放行一次。</summary>
+    private static bool ShouldLogUnload(string key)
+    {
+        long now = Environment.TickCount64;
+        lock (UnloadLogTimes)
+        {
+            if (UnloadLogTimes.TryGetValue(key, out long last) && now - last < UnloadLogIntervalMs)
+                return false;
+            if (UnloadLogTimes.Count >= MaxTrackedUnloadKeys && !UnloadLogTimes.ContainsKey(key))
+                UnloadLogTimes.Clear();
+            UnloadLogTimes[key] = now;
+            return true;
         }
     }
 

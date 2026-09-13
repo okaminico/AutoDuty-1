@@ -186,7 +186,13 @@ namespace AutoDuty.Helpers
 
         internal unsafe class Names(nint UnitBasePtr, int BeginOffset = 0) : AtkReader(UnitBasePtr, BeginOffset)
         {
-            internal string Name => ReadSeString(0).GetText();
+            /// <remarks>
+            /// 🔴 這裡<b>不能</b>用 ECommons 的 <c>GetText()</c>:另一端是 Lumina
+            /// (<c>GotoHelper</c> 傳進來的是 <c>AethernetName…Name.ToString()</c>),
+            /// 而 <c>GetText()</c> 會把地名裡的連字符 payload(<c>02 1F 01 03</c>)整個丟掉
+            /// ⇒ 「烏爾達哈 - 納爾階」這類名字<b>永遠比不中</b>,失敗形式是靜默回 0。
+            /// </remarks>
+            internal string Name => SeStringTextExtractor.ExtractLuminaText(ReadSeString(0));
         }
 
         internal unsafe class Data(nint UnitBasePtr, int BeginOffset = 0) : AtkReader(UnitBasePtr, BeginOffset)
