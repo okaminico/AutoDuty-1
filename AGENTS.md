@@ -53,6 +53,19 @@ AutoDuty/
 - **DO NOT** call navigation without checking `VNavmesh_IPCSubscriber.Nav_IsReady()`
 - **NEVER** block the main thread - use `TaskManager.Enqueue()` for async sequences
 
+## 共用函式庫
+
+本插件依賴的共用函式庫（全部已 fork 到 `ffxiv-tc-port` org，走 submodule + `ProjectReference`，非 NuGet）：
+
+| 函式庫 | 來源 |
+|---|---|
+| `ECommons` | `ffxiv-tc-port/ECommons` |
+| `ECommons.IPC` | `ffxiv-tc-port/ECommons.IPC`（分支 `tc-api13`） |
+| `WrathCombo.API` | `ffxiv-tc-port/WrathCombo.API`（分支 `tc-api13`） |
+| `ffxiv_pictomancy` | `ffxiv-tc-port/ffxiv_pictomancy-sourpuh`（上游只發 net10 TFM，故走原始碼相依，不要改回 `PackageReference`） |
+
+新增/調整這類相依前，先看 [開發規範](https://github.com/ffxiv-tc-port/DalamudPluginsTC/blob/main/docs/plugin-fork-standards.md)（`DalamudPluginsTC` repo），尤其是 ECommons 的 NuGet 版本統一陷阱那一節——`ECommons/ECommons/ECommons.csproj` 的 `BaseVersion` 註解就是這條規則的出處。
+
 ## REQUIRED PLUGINS (RUNTIME)
 
 | Plugin | Purpose | IPC Namespace |
@@ -71,17 +84,20 @@ AutoDuty/
 
 ```json
 {
-  "actions": [
+  "Actions": [
     {
-      "tag": 0,
-      "name": "ActionName",
-      "position": { "X": 0.0, "Y": 0.0, "Z": 0.0 },
-      "arguments": ["arg1"],
-      "note": ""
+      "Tag": "None",
+      "Name": "ActionName",
+      "Position": { "X": 0.0, "Y": 0.0, "Z": 0.0 },
+      "Arguments": ["arg1"],
+      "Conditions": [],
+      "Note": ""
     }
   ]
 }
 ```
+
+Key 比對不分大小寫(見 `BuildTab.jsonSerializerOptions`),所以偶爾能看到全小寫的檔案不會壞掉——但那是少數例外(9/326,全部可追溯到「直接整份複製上游原始檔」的修正,例如 `(243) The Binding Coil of Bahamut - Turn 3.json`),不是慣例。**新增/修改路徑檔一律照上面這個 PascalCase 範例**,跟其餘 308 個檔案一致。
 
 **Common action names**: `MoveTo`, `Boss`, `TreasureCoffer`, `DutySpecificCode`, `Interactable`
 
